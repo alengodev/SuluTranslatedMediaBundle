@@ -2,7 +2,13 @@
     "name": "alengo/sulu-translated-media-bundle",
     "description": "SEO-friendly translated media filenames for Sulu CMS",
     "type": "symfony-bundle",
-    "license": "proprietary",
+    "homepage": "https://github.com/alengodev/SuluBlockSettingsBundle",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Alexander Huber-De Monte"
+        }
+    ],
     "require": {
         "php": "^8.2",
         "doctrine/orm": "^3.0",
