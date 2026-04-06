@@ -7,6 +7,8 @@ namespace Alengo\SuluTranslatedMediaBundle\DependencyInjection;
 use Alengo\SuluTranslatedMediaBundle\Admin\MediaAdmin;
 use Alengo\SuluTranslatedMediaBundle\Controller\Admin\MediaAdditionalDataController;
 use Alengo\SuluTranslatedMediaBundle\Twig\TranslatedMediaExtension as TwigExtension;
+use Sulu\Bundle\MediaBundle\Media\FormatCache\FormatCacheInterface;
+use Symfony\Component\DependencyInjection\Alias;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Extension\Extension;
@@ -59,6 +61,9 @@ class TranslatedMediaExtension extends Extension implements PrependExtensionInte
         $container->setParameter('alengo_translated_media.admin.form_key', $config['admin']['form_key']);
         $container->setParameter('alengo_translated_media.admin.resource_key', $config['admin']['resource_key']);
         $container->setParameter('alengo_translated_media.admin.tab_title', $config['admin']['tab_title']);
+
+        // FormatCacheInterface autowiring alias
+        $container->setAlias(FormatCacheInterface::class, new Alias('sulu_media.format_cache', true));
 
         // Twig extension
         $twigDef = new Definition(TwigExtension::class);
