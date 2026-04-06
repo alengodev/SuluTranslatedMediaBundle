@@ -5,14 +5,51 @@ declare(strict_types=1);
 namespace Alengo\SuluTranslatedMediaBundle\DependencyInjection;
 
 use Alengo\SuluTranslatedMediaBundle\Admin\MediaAdmin;
+use Alengo\SuluTranslatedMediaBundle\Controller\Admin\MediaAdditionalDataController;
 use Alengo\SuluTranslatedMediaBundle\Twig\TranslatedMediaExtension as TwigExtension;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Extension\Extension;
+use Symfony\Component\DependencyInjection\Extension\PrependExtensionInterface;
 use Symfony\Component\DependencyInjection\Reference;
 
-class TranslatedMediaExtension extends Extension
+class TranslatedMediaExtension extends Extension implements PrependExtensionInterface
 {
+    public function prepend(ContainerBuilder $container): void
+    {
+        // Resolve values from project config (fall back to defaults)
+        $configs = $container->getExtensionConfig($this->getAlias());
+        $mediaClass = \Alengo\SuluTranslatedMediaBundle\Entity\Media::class;
+        $resourceKey = 'media_additional_data';
+        foreach ($configs as $c) {
+            if (isset($c['media_class'])) {
+                $mediaClass = $c['media_class'];
+            }
+            if (isset($c['admin']['resource_key'])) {
+                $resourceKey = $c['admin']['resource_key'];
+            }
+        }
+
+        // Auto-configure Sulu to use the bundle's Media entity
+        $container->prependExtensionConfig('sulu_media', [
+            'objects' => ['media' => ['model' => $mediaClass]],
+        ]);
+
+        // Register bundle's forms directory (project's directory is added later and overrides)
+        $container->prependExtensionConfig('sulu_admin', [
+            'forms' => [
+                'directories' => [\dirname(__DIR__) . '/Resources/config/forms'],
+            ],
+            'resources' => [
+                $resourceKey => [
+                    'routes' => [
+                        'detail' => 'alengo_translated_media_get_media_additional_data',
+                    ],
+                ],
+            ],
+        ]);
+    }
+
     public function load(array $configs, ContainerBuilder $container): void
     {
         $configuration = new Configuration();
@@ -43,6 +80,13 @@ class TranslatedMediaExtension extends Extension
         $adminDef->addTag('sulu.admin');
         $adminDef->addTag('sulu.context', ['context' => 'admin']);
         $container->setDefinition(MediaAdmin::class, $adminDef);
+
+        // Controller
+        $controllerDef = new Definition(MediaAdditionalDataController::class);
+        $controllerDef->addArgument(new Reference('doctrine.orm.entity_manager'));
+        $controllerDef->addArgument(new Reference('sulu_http_cache.cache_manager', ContainerBuilder::NULL_ON_INVALID_REFERENCE));
+        $controllerDef->setPublic(true);
+        $container->setDefinition(MediaAdditionalDataController::class, $controllerDef);
     }
 
     public function getAlias(): string

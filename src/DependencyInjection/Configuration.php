@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Alengo\SuluTranslatedMediaBundle\DependencyInjection;
 
+use Alengo\SuluTranslatedMediaBundle\Entity\Media;
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
 use Symfony\Component\Config\Definition\ConfigurationInterface;
 
@@ -16,9 +17,9 @@ class Configuration implements ConfigurationInterface
         $treeBuilder->getRootNode()
             ->children()
                 ->scalarNode('media_class')
-                    ->isRequired()
+                    ->defaultValue(Media::class)
                     ->cannotBeEmpty()
-                    ->info('The Media entity class that implements MediaTranslationsAwareInterface')
+                    ->info('The Media entity class — defaults to the bundle\'s built-in Media entity')
                 ->end()
                 ->arrayNode('admin')
                     ->addDefaultsIfNotSet()
