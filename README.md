@@ -36,6 +36,7 @@ Import the admin API routes in `config/routes/sulu_admin.yaml`:
 ```yaml
 TranslatedMediaBundle:
     resource: "@TranslatedMediaBundle/Resources/config/routing_admin_api.yaml"
+    prefix: /admin/api
 ```
 
 Run a database migration or schema update to create the `me_media_translations` table:

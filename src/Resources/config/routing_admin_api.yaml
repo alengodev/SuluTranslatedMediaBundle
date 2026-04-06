@@ -1,9 +1,9 @@
 alengo_translated_media_get_media_additional_data:
-    path: /admin/api/media-additional-data/{id}
+    path: /media-additional-data/{id}
     controller: Alengo\SuluTranslatedMediaBundle\Controller\Admin\MediaAdditionalDataController::getAction
     methods: [GET]
 
 alengo_translated_media_put_media_additional_data:
-    path: /admin/api/media-additional-data/{id}
+    path: /media-additional-data/{id}
     controller: Alengo\SuluTranslatedMediaBundle\Controller\Admin\MediaAdditionalDataController::putAction
     methods: [PUT]
