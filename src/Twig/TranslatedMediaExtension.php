@@ -28,6 +28,9 @@ use Twig\TwigFunction;
  */
 class TranslatedMediaExtension extends AbstractExtension
 {
+    /** @var array<string, string|null> Request-scoped cache of the resolved SEO base filename, keyed by "id:locale". */
+    private array $seoFilenameCache = [];
+
     /**
      * @param class-string $mediaClass                        The Media entity class (must implement MediaTranslationsAwareInterface)
      * @param array<string, string> $defaultAdditionalTypes   e.g. ['webp' => 'image/webp']
@@ -146,26 +149,42 @@ class TranslatedMediaExtension extends AbstractExtension
 
     private function getTranslatedFileName(int $id, string $originalFileName, ?string $locale, ?string $overrideExtension = null): string
     {
-        $originalExtension = \pathinfo($originalFileName, \PATHINFO_EXTENSION);
-        $extension = $overrideExtension ?? $originalExtension;
+        $extension = $overrideExtension ?? \pathinfo($originalFileName, \PATHINFO_EXTENSION);
+        $fallback = \pathinfo($originalFileName, \PATHINFO_FILENAME);
 
         if (null === $locale) {
-            return \pathinfo($originalFileName, \PATHINFO_FILENAME) . '.' . $extension;
+            return $fallback . '.' . $extension;
         }
 
+        // The SEO base filename does not depend on the extension/format, so the
+        // ~15-25 srcset/source variants built for one image reuse a single
+        // EntityManager::find()+translation lookup instead of repeating it per
+        // variant. Cache is request-scoped (Twig extension instance).
+        $key = $id . ':' . $locale;
+        if (!\array_key_exists($key, $this->seoFilenameCache)) {
+            $this->seoFilenameCache[$key] = $this->resolveSeoFilename($id, $locale);
+        }
+
+        return ($this->seoFilenameCache[$key] ?? $fallback) . '.' . $extension;
+    }
+
+    /**
+     * Resolves the slugged SEO filename (without extension) for a media id in a
+     * given locale, or null if the media has no SEO filename for that locale.
+     */
+    private function resolveSeoFilename(int $id, string $locale): ?string
+    {
         $media = $this->entityManager->find($this->mediaClass, $id);
         if (!$media instanceof MediaTranslationsAwareInterface) {
-            return \pathinfo($originalFileName, \PATHINFO_FILENAME) . '.' . $extension;
+            return null;
         }
 
         foreach ($media->getMediaTranslations() as $translation) {
             if ($translation->getLocale() === $locale && $translation->getSeoFilename()) {
-                $seoFilename = $this->slugger->slug($translation->getSeoFilename())->lower()->toString();
-
-                return $seoFilename . '.' . $extension;
+                return $this->slugger->slug($translation->getSeoFilename())->lower()->toString();
             }
         }
 
-        return \pathinfo($originalFileName, \PATHINFO_FILENAME) . '.' . $extension;
+        return null;
     }
 }
