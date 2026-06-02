@@ -56,7 +56,7 @@ class TranslatedMediaExtension extends AbstractExtension
     /**
      * Get media URL with translated SEO filename.
      *
-     * @param ApiMedia|array|null $media
+     * @param ApiMedia|array<string, mixed>|null $media
      */
     public function getTranslatedMediaUrl(
         ApiMedia|array|null $media,
@@ -90,7 +90,7 @@ class TranslatedMediaExtension extends AbstractExtension
     /**
      * Get all media URLs including additional types (webp, etc.).
      *
-     * @param ApiMedia|array|null $media
+     * @param ApiMedia|array<string, mixed>|null $media
      *
      * @return array<string, string|null>
      */
@@ -111,6 +111,8 @@ class TranslatedMediaExtension extends AbstractExtension
     }
 
     /**
+     * @param ApiMedia|array<string, mixed>|null $media
+     *
      * @return array{id: int, originalFileName: string, version: int, subVersion: int, locale: ?string}|null
      */
     private function extractMediaData(ApiMedia|array|null $media, ?string $locale): ?array
@@ -125,21 +127,25 @@ class TranslatedMediaExtension extends AbstractExtension
             $version = $media->getVersion();
             $subVersion = $media->getSubVersion();
             $locale ??= $media->getLocale();
-        } elseif (\is_array($media)) {
-            $id = $media['id'] ?? null;
-            $originalFileName = $media['name'] ?? $media['fileName'] ?? null;
-            $version = $media['version'] ?? 1;
-            $subVersion = $media['subVersion'] ?? 0;
         } else {
-            return null;
+            // Legacy/array form (e.g. webspaceSettings fallback) — values are untyped.
+            $idRaw = $media['id'] ?? null;
+            $nameRaw = $media['name'] ?? $media['fileName'] ?? null;
+            $versionRaw = $media['version'] ?? null;
+            $subVersionRaw = $media['subVersion'] ?? null;
+
+            $id = \is_numeric($idRaw) ? (int) $idRaw : null;
+            $originalFileName = \is_string($nameRaw) ? $nameRaw : null;
+            $version = \is_numeric($versionRaw) ? (int) $versionRaw : 1;
+            $subVersion = \is_numeric($subVersionRaw) ? (int) $subVersionRaw : 0;
         }
 
-        if (null === $id || null === $originalFileName) {
+        if (null === $id || null === $originalFileName || '' === $originalFileName) {
             return null;
         }
 
         return [
-            'id' => (int) $id,
+            'id' => $id,
             'originalFileName' => $originalFileName,
             'version' => $version,
             'subVersion' => $subVersion,
