@@ -155,7 +155,7 @@ class TranslatedMediaExtension extends AbstractExtension
 
     private function getTranslatedFileName(int $id, string $originalFileName, ?string $locale, ?string $overrideExtension = null): string
     {
-        $extension = $overrideExtension ?? \pathinfo($originalFileName, \PATHINFO_EXTENSION);
+        $extension = $overrideExtension ?? $this->normalizeOutputExtension(\pathinfo($originalFileName, \PATHINFO_EXTENSION));
         $fallback = \pathinfo($originalFileName, \PATHINFO_FILENAME);
 
         if (null === $locale) {
@@ -172,6 +172,25 @@ class TranslatedMediaExtension extends AbstractExtension
         }
 
         return ($this->seoFilenameCache[$key] ?? $fallback) . '.' . $extension;
+    }
+
+    /**
+     * Normalize an original file extension to the extension Sulu actually serves
+     * the rendition under.
+     *
+     * Sulu's ImagineImageConverter::getSupportedOutputImageFormats() whitelists the
+     * extensions a format URL may use and defaults everything to "jpg" except
+     * png/gif/webp/avif/svg. So a file uploaded as ".jpeg" (or ".JPG", ".jpe", ...)
+     * is only ever served as ".jpg" — requesting ".jpeg" returns 404. Mirror that
+     * mapping here so the generated fallback `<img>`/`<source>` URLs resolve.
+     */
+    private function normalizeOutputExtension(string $extension): string
+    {
+        $extension = \strtolower($extension);
+
+        return \in_array($extension, ['png', 'gif', 'webp', 'avif', 'svg'], true)
+            ? $extension
+            : 'jpg';
     }
 
     /**
