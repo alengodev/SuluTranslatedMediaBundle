@@ -7,6 +7,7 @@ namespace Alengo\SuluTranslatedMediaBundle\DependencyInjection;
 use Alengo\SuluTranslatedMediaBundle\Admin\MediaAdmin;
 use Alengo\SuluTranslatedMediaBundle\Command\WarmMediaFormatCacheCommand;
 use Alengo\SuluTranslatedMediaBundle\Controller\Admin\MediaAdditionalDataController;
+use Alengo\SuluTranslatedMediaBundle\Media\FormatManager\MediaFormatCacheWarmer;
 use Alengo\SuluTranslatedMediaBundle\Twig\TranslatedMediaExtension as TwigExtension;
 use Sulu\Bundle\MediaBundle\Media\FormatCache\FormatCacheInterface;
 use Symfony\Component\DependencyInjection\Alias;
@@ -94,16 +95,30 @@ class TranslatedMediaExtension extends Extension implements PrependExtensionInte
         $controllerDef->setPublic(true);
         $container->setDefinition(MediaAdditionalDataController::class, $controllerDef);
 
+        // Per-media format cache warmer (de-duplicated fan-out + optional decode-once strategy).
+        // Reuses Sulu's own image converter sub-services so warmed bytes match the live image proxy.
+        $warmerDef = new Definition(MediaFormatCacheWarmer::class);
+        $warmerDef->addArgument(new Reference('sulu_media.format_manager'));
+        $warmerDef->addArgument(new Reference('sulu_media.format_cache'));
+        $warmerDef->addArgument(new Reference('sulu_media.adapter'));
+        $warmerDef->addArgument(new Reference('sulu_media.storage'));
+        $warmerDef->addArgument(new Reference('sulu_media.image.media_extractor'));
+        $warmerDef->addArgument(new Reference('sulu_media.image.transformation_pool'));
+        $warmerDef->addArgument(new Reference('sulu_media.image.focus'));
+        $warmerDef->addArgument(new Reference('sulu_media.image.scaler'));
+        $warmerDef->addArgument(new Reference('sulu_media.image.cropper'));
+        $warmerDef->addArgument('%sulu_media.image.formats%');
+        $warmerDef->addArgument('%sulu_media.format_cache.path%');
+        $warmerDef->addArgument('%sulu_media.format_cache.segments%');
+        $container->setDefinition(MediaFormatCacheWarmer::class, $warmerDef);
+
         // Format cache warming command
         $warmCommandDef = new Definition(WarmMediaFormatCacheCommand::class);
-        $warmCommandDef->addArgument(new Reference('sulu_media.format_manager'));
+        $warmCommandDef->addArgument(new Reference(MediaFormatCacheWarmer::class));
         $warmCommandDef->addArgument(new Reference('doctrine.orm.entity_manager'));
         $warmCommandDef->addArgument(new Reference('slugger'));
         $warmCommandDef->addArgument('%sulu_media.image.formats%');
-        $warmCommandDef->addArgument($config['media_class']);
         $warmCommandDef->addArgument('%kernel.project_dir%');
-        $warmCommandDef->addArgument('%sulu_media.format_cache.path%');
-        $warmCommandDef->addArgument('%sulu_media.format_cache.segments%');
         $warmCommandDef->addTag('console.command');
         $container->setDefinition(WarmMediaFormatCacheCommand::class, $warmCommandDef);
     }
