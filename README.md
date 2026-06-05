@@ -99,7 +99,7 @@ By default existing cache files are **overwritten** (re-encoded). Pass `--skip-e
 | `--formats` | _(all)_ | Restrict to a comma-separated list of base format keys (a subset of the source file) |
 | `--no-2x` | | Skip the `@2x` / retina variants (halves the work) |
 | `--parallel` / `-j` | `1` | Number of parallel worker processes |
-| `--decode-once` | | Decode each source image once and reuse it across all formats/extensions (experimental) |
+| `--no-decode-once` | | Disable the default decode-once strategy (decode the source once per rendition via the FormatManager) |
 | `--skip-existing` | | Skip renditions that already exist in the cache (faster re-runs) |
 | `--dry-run` | | List what would be generated without writing any file |
 
@@ -126,6 +126,16 @@ Warming the full matrix (every media × every format × `@2x` × `jpg`/`webp`/`a
 
 - **`--formats` / `--no-2x`** — only warm what the frontend actually requests. Restricting to the handful of formats used in your templates and dropping retina variants shrinks the matrix directly.
 
-- **`--decode-once`** *(experimental)* — decodes each source image a single time per media and reuses it across all formats and extensions, instead of letting Sulu re-load and re-decode the source for every rendition. Restricted to single-layer raster images; animated GIF/WebP, SVG and any decode failure transparently fall back to the regular converter, so the cached bytes always match the live image proxy. Spot-check the output before relying on it in production.
+- **Decode-once (default, on)** — each source image is decoded a single time per media and reused across all formats and extensions, instead of re-loading and re-decoding the source for every rendition. Restricted to single-layer raster images; animated GIF/WebP, SVG and any decode failure transparently fall back to Sulu's regular converter, so the cached bytes always match the live image proxy. The integration test asserts this byte-for-byte for both the `gd` and `imagick` adapters across `jpg`/`webp`/`avif` (see [Tests](#tests)). Pass `--no-decode-once` to decode per rendition everywhere (the previous, more conservative behaviour).
 
 > `--parallel` runs each worker as a separate `bin/console` process over a slice of the media, aggregating progress into a single bar. It has no effect on `--dry-run` (which does no work).
+
+## Tests
+
+```bash
+composer install
+composer test          # or: vendor/bin/phpunit
+```
+
+- **`tests/Unit`** — pure command logic (translated filename building, option parsing, shard partitioning, worker-summary parsing). No database or container needed.
+- **`tests/Integration`** — proves the default decode-once strategy produces **byte-identical** output to Sulu's `ImagineImageConverter` across multiple formats and extensions (`jpg`/`webp`/`avif`), for every locally available Imagine adapter (`gd` and/or `imagick`). Skipped automatically if neither extension is installed.

@@ -40,12 +40,14 @@ use Symfony\Component\Yaml\Yaml;
  * extension, so there is no separate ".jpeg" cache file.
  *
  * Performance options:
- *   --parallel=N    spreads the media over N worker processes (near-linear speed-up on multi-core hosts)
- *   --decode-once   decodes each source image once per media and reuses it across all formats/extensions
+ *   --parallel=N        spreads the media over N worker processes (near-linear speed-up on multi-core hosts)
+ *   --no-decode-once    disables the default decode-once strategy (decode the source per rendition instead)
  *   --formats / --no-2x / --extensions   shrink the work matrix to only what the frontend actually requests
  *
- * The de-duplicated fan-out (convert each rendition once, write the identical bytes to every translated
- * filename) is always on and handled by {@see MediaFormatCacheWarmer}.
+ * Two optimisations are always/by-default on and handled by {@see MediaFormatCacheWarmer}: the de-duplicated
+ * fan-out (convert each rendition once, write the identical bytes to every translated filename), and the
+ * decode-once strategy (decode each source image once per media, reuse it across all formats/extensions,
+ * falling back to the FormatManager for animated/SVG/edge cases).
  */
 #[AsCommand(
     name: 'alengo:translated-media:format-cache:warm',
@@ -75,7 +77,7 @@ class WarmMediaFormatCacheCommand extends Command
             ->addOption('formats', null, InputOption::VALUE_REQUIRED, 'Restrict to a comma-separated list of base format keys (subset of the source file)')
             ->addOption('no-2x', null, InputOption::VALUE_NONE, 'Skip the @2x / retina variants')
             ->addOption('parallel', 'j', InputOption::VALUE_REQUIRED, 'Number of parallel worker processes', '1')
-            ->addOption('decode-once', null, InputOption::VALUE_NONE, 'Decode each source image once and reuse it across all formats/extensions (experimental, single-layer raster only)')
+            ->addOption('decode-once', null, InputOption::VALUE_NEGATABLE, 'Decode each source image once and reuse it across all formats/extensions (default: on; pass --no-decode-once to decode per rendition)', true)
             ->addOption('skip-existing', null, InputOption::VALUE_NONE, 'Skip renditions that already exist in the cache (faster re-runs)')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'List what would be generated without writing any file')
             // Internal: marks a worker process spawned by --parallel and selects its media subset ("index/count").
@@ -265,10 +267,10 @@ class WarmMediaFormatCacheCommand extends Command
                 $totals['failures'][] = $failure;
             }
 
-            // Release the loaded file version (and anything Doctrine pulled in) to keep memory flat over large sets.
-            if (null !== $fileVersion) {
-                $this->entityManager->clear();
-            }
+            // Keep the identity map flat: both returnImage() (via findMediaByIdForRendering) and the
+            // decode-once file-version loader pull managed entities into the EM on every media. Without this
+            // they accumulate unboundedly over a large library and exhaust memory on a single-process run.
+            $this->entityManager->clear();
 
             $onMediaDone();
         }
@@ -317,9 +319,7 @@ class WarmMediaFormatCacheCommand extends Command
             if ($input->getOption('no-2x')) {
                 $args[] = '--no-2x';
             }
-            if ($input->getOption('decode-once')) {
-                $args[] = '--decode-once';
-            }
+            $args[] = $input->getOption('decode-once') ? '--decode-once' : '--no-decode-once';
 
             $process = new Process($args, $this->projectDir, null, null, null);
             $process->start();

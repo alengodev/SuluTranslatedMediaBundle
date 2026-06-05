@@ -20,12 +20,23 @@
         "symfony/yaml": "^7.0",
         "twig/twig": "^3.0"
     },
+    "require-dev": {
+        "phpunit/phpunit": "^11.5"
+    },
     "autoload": {
         "psr-4": {
             "Alengo\\SuluTranslatedMediaBundle\\": "src/"
         }
     },
+    "autoload-dev": {
+        "psr-4": {
+            "Alengo\\SuluTranslatedMediaBundle\\Tests\\": "tests/"
+        }
+    },
     "config": {
         "sort-packages": true
+    },
+    "scripts": {
+        "test": "phpunit"
     }
 }
