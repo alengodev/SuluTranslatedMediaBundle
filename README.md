@@ -80,8 +80,11 @@ That's it — no further configuration required.
 
 Pre-generates ("warms") the local format cache (`public/uploads/media`) for every image media, so the frontend never has to generate a thumbnail on the first request. Because the `TranslatedFormatManager` stores each rendition under the *URL filename*, the command warms one cache entry per distinct base filename: the original filename (covers every locale without a SEO override) plus the slugged `seoFilename` of every translation. For each base filename it warms both the x1 variant (e.g. `800x600`) and the x2 / retina variant (`800x600@2x`), each in `jpg`, `webp` and `avif` (intersected with the formats Sulu can actually produce for the source mime type).
 
+**Media scope:** by default only media actually referenced by content (read from Sulu's `re_references` reference store, `resourceKey = "media"`) are warmed — uploaded-but-unused media are skipped. Pass `--no-referenced-only` to warm every image media; an explicit `--media` list always wins. If the reference table is missing the command falls back to all media (with a warning), and if it is empty it warns that references may not be indexed — so it never silently warms nothing.
+
 ```bash
-bin/console alengo:translated-media:format-cache:warm
+bin/console alengo:translated-media:format-cache:warm                       # referenced media only (default)
+bin/console alengo:translated-media:format-cache:warm --no-referenced-only  # every image media
 bin/console alengo:translated-media:format-cache:warm --dry-run
 bin/console alengo:translated-media:format-cache:warm --skip-existing
 bin/console alengo:translated-media:format-cache:warm --media=1,42,99 --extensions=webp,avif
@@ -95,7 +98,8 @@ By default existing cache files are **overwritten** (re-encoded). Pass `--skip-e
 |---|---|---|
 | `--source` / `-s` | `config/app/image-formats.yaml` | Source YAML file with the base format keys (relative to project root) |
 | `--extensions` / `-x` | `jpg,webp,avif` | Comma-separated output extensions to warm |
-| `--media` / `-m` | _(all)_ | Restrict to a comma-separated list of media IDs |
+| `--media` / `-m` | _(all)_ | Restrict to a comma-separated list of media IDs (overrides `--referenced-only`) |
+| `--no-referenced-only` | | Warm **every** image media, not only those referenced by content (default: referenced only) |
 | `--formats` | _(all)_ | Restrict to a comma-separated list of base format keys (a subset of the source file) |
 | `--no-2x` | | Skip the `@2x` / retina variants (halves the work) |
 | `--parallel` / `-j` | `1` | Number of parallel worker processes |

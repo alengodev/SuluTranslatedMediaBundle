@@ -8,6 +8,7 @@ use Alengo\SuluTranslatedMediaBundle\Entity\MediaTranslations;
 use Alengo\SuluTranslatedMediaBundle\Media\FormatManager\MediaFormatCacheWarmer;
 use Doctrine\ORM\EntityManagerInterface;
 use Sulu\Bundle\MediaBundle\Entity\FileVersion;
+use Sulu\Bundle\MediaBundle\Entity\MediaInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\ProgressBar;
@@ -74,6 +75,7 @@ class WarmMediaFormatCacheCommand extends Command
             ->addOption('source', 's', InputOption::VALUE_REQUIRED, 'Source YAML file with the base format keys', 'config/app/image-formats.yaml')
             ->addOption('extensions', 'x', InputOption::VALUE_REQUIRED, 'Comma-separated output extensions to warm', 'jpg,webp,avif')
             ->addOption('media', 'm', InputOption::VALUE_REQUIRED, 'Restrict to a comma-separated list of media IDs')
+            ->addOption('referenced-only', null, InputOption::VALUE_NEGATABLE, 'Only warm media referenced by content (Sulu re_references); default on, --no-referenced-only warms every image media', true)
             ->addOption('formats', null, InputOption::VALUE_REQUIRED, 'Restrict to a comma-separated list of base format keys (subset of the source file)')
             ->addOption('no-2x', null, InputOption::VALUE_NONE, 'Skip the @2x / retina variants')
             ->addOption('parallel', 'j', InputOption::VALUE_REQUIRED, 'Number of parallel worker processes', '1')
@@ -91,6 +93,7 @@ class WarmMediaFormatCacheCommand extends Command
         $skipExisting = (bool) $input->getOption('skip-existing');
         $decodeOnce = (bool) $input->getOption('decode-once');
         $noRetina = (bool) $input->getOption('no-2x');
+        $referencedOnly = (bool) $input->getOption('referenced-only');
         $parallel = \max(1, (int) $input->getOption('parallel'));
         $shard = $this->parseShard($input->getOption('shard'));
         $isWorker = null !== $shard;
@@ -154,18 +157,46 @@ class WarmMediaFormatCacheCommand extends Command
         // 3. Normalise the requested output extensions (jpeg => jpg, dedup).
         $extensions = $this->parseExtensions((string) $input->getOption('extensions'));
 
-        // 4. Collect the image media (current file version only).
-        $mediaIds = $this->parseMediaIds($input->getOption('media'));
-        $mediaList = $this->fetchImageMedia($mediaIds);
+        // 4. Collect the image media to warm. By default only media actually referenced by content
+        //    (Sulu's re_references) are warmed; --no-referenced-only warms every image media. An explicit
+        //    --media list always wins over the referenced-only default.
+        $explicitIds = $this->parseMediaIds($input->getOption('media'));
+        if ([] !== $explicitIds) {
+            $mediaList = $this->fetchImageMedia($explicitIds);
+            $mediaScope = 'explicit --media list';
+        } elseif ($referencedOnly) {
+            $referencedIds = $this->fetchReferencedMediaIds();
+            if (null === $referencedIds) {
+                if (!$isWorker) {
+                    $io->warning('Reference table "re_references" not available (Sulu ReferenceBundle inactive?) — warming ALL media. Pass --no-referenced-only to make this explicit.');
+                }
+                $mediaList = $this->fetchImageMedia([]);
+                $mediaScope = 'all (reference table unavailable)';
+            } else {
+                $mediaList = [] === $referencedIds ? [] : $this->fetchImageMedia($referencedIds);
+                $mediaScope = \sprintf('referenced only (%d media referenced)', \count($referencedIds));
+            }
+        } else {
+            $mediaList = $this->fetchImageMedia([]);
+            $mediaScope = 'all media';
+        }
+
         if ([] === $mediaList) {
-            $io->warning('No image media found.');
+            if ($isWorker) {
+                $output->writeln((string) \json_encode(['generated' => 0, 'failed' => 0, 'skippedExisting' => 0]));
+
+                return Command::SUCCESS;
+            }
+            $io->warning($referencedOnly && [] === $explicitIds
+                ? 'No referenced image media found. References may not be indexed yet — refresh them, or pass --no-referenced-only to warm every image media.'
+                : 'No image media found.');
 
             return Command::SUCCESS;
         }
 
         // 5. Parent dispatch: spread the work over N worker processes (skipped for dry-runs, which do no work).
         if ($parallel > 1 && !$isWorker && !$dryRun) {
-            return $this->runParallel($io, $input, \count($mediaList), $parallel);
+            return $this->runParallel($io, $input, \count($mediaList), $parallel, $mediaScope);
         }
 
         // Worker: keep only this shard's slice of the media.
@@ -173,12 +204,13 @@ class WarmMediaFormatCacheCommand extends Command
             $mediaList = $this->sliceShard($mediaList, $shard['index'], $shard['count']);
         }
 
-        $seoFilenames = $this->fetchSeoFilenames($mediaIds);
+        $seoFilenames = $this->fetchSeoFilenames($explicitIds);
 
         if (!$isWorker) {
             $io->section('Warming translated media format cache');
             $io->listing([
                 \sprintf('Media:         %d', \count($mediaList)),
+                \sprintf('Scope:         %s', $mediaScope),
                 \sprintf('Format keys:   %d%s', \count($formatKeys), $noRetina ? '' : ' (incl. @2x)'),
                 \sprintf('Extensions:    %s', \implode(', ', $extensions)),
                 \sprintf('Strategy:      %s', $decodeOnce ? 'decode-once (reuse source)' : 'per-rendition (FormatManager)'),
@@ -282,13 +314,14 @@ class WarmMediaFormatCacheCommand extends Command
      * Spawns $parallel worker processes (one per media shard) and aggregates their summaries while rendering a
      * single global progress bar fed by the workers' per-media STDERR tokens.
      */
-    private function runParallel(SymfonyStyle $io, InputInterface $input, int $total, int $parallel): int
+    private function runParallel(SymfonyStyle $io, InputInterface $input, int $total, int $parallel, string $mediaScope): int
     {
         $parallel = \max(1, \min($parallel, $total));
 
         $io->section('Warming translated media format cache (parallel)');
         $io->listing([
             \sprintf('Media:    %d', $total),
+            \sprintf('Scope:    %s', $mediaScope),
             \sprintf('Workers:  %d', $parallel),
             \sprintf('Strategy: %s', $input->getOption('decode-once') ? 'decode-once (reuse source)' : 'per-rendition (FormatManager)'),
         ]);
@@ -320,6 +353,7 @@ class WarmMediaFormatCacheCommand extends Command
                 $args[] = '--no-2x';
             }
             $args[] = $input->getOption('decode-once') ? '--decode-once' : '--no-decode-once';
+            $args[] = $input->getOption('referenced-only') ? '--referenced-only' : '--no-referenced-only';
 
             $process = new Process($args, $this->projectDir, null, null, null);
             $process->start();
@@ -584,6 +618,41 @@ class WarmMediaFormatCacheCommand extends Command
         }
 
         return null;
+    }
+
+    /**
+     * Returns the IDs of media referenced by content, read from Sulu's reference store
+     * (re_references, resourceKey = "media"). Returns null when that table is unavailable (e.g. the
+     * Sulu ReferenceBundle is not active), so the caller can fall back to warming all media.
+     *
+     * @return list<int>|null
+     */
+    private function fetchReferencedMediaIds(): ?array
+    {
+        $connection = $this->entityManager->getConnection();
+        $table = $connection->quoteIdentifier('re_references');
+        $resourceId = $connection->quoteIdentifier('resourceId');
+        $resourceKey = $connection->quoteIdentifier('resourceKey');
+
+        try {
+            /** @var list<mixed> $rows */
+            $rows = $connection->fetchFirstColumn(
+                \sprintf('SELECT DISTINCT %s FROM %s WHERE %s = :resourceKey', $resourceId, $table, $resourceKey),
+                ['resourceKey' => MediaInterface::RESOURCE_KEY],
+            );
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $ids = [];
+        foreach ($rows as $row) {
+            $id = (int) $row;
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+
+        return $ids;
     }
 
     /**

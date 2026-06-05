@@ -33,6 +33,14 @@ final class WarmMediaFormatCacheCommandOptionsTest extends TestCase
         self::assertTrue($option->getDefault(), 'decode-once must default to ON');
     }
 
+    public function testReferencedOnlyIsANegatableOptionThatDefaultsToOn(): void
+    {
+        $option = $this->command()->getDefinition()->getOption('referenced-only');
+
+        self::assertTrue($option->isNegatable(), 'referenced-only must be negatable so --no-referenced-only works');
+        self::assertTrue($option->getDefault(), 'referenced-only must default to ON');
+    }
+
     public function testDefaultsOfTheOtherPerformanceOptions(): void
     {
         $definition = $this->command()->getDefinition();
