@@ -10,6 +10,7 @@ Serves media files under locale-specific SEO filenames (e.g. `/uploads/red-shoes
 - **Built-in Media entity** — ready-to-use `Media` entity extending Sulu's base; no project entity required
 - **TranslatedFormatManager** — replaces Sulu's default FormatManager via compiler pass
 - **Twig functions** — `sulu_translated_media_url()` / `sulu_translated_media_urls()` with WebP support
+- **Format cache warming** — pre-generates the format cache (jpg/webp/avif, x1 & x2) for all image media under their translated filenames
 - **Admin tab** — "Additional Data" tab auto-registered in the Sulu Media admin
 - **Zero-config** — `sulu_media.objects.media.model` and `sulu_admin` resources are auto-configured
 
@@ -72,3 +73,24 @@ That's it — no further configuration required.
 | `Entity\MediaTranslations` | Locale rows in `me_media_translations` |
 | `Model\MediaTranslationsAwareInterface` + `MediaTranslationsTrait` | Locale fields: `title`, `description`, `seoFilename` |
 | `Model\MediaAdditionalDataInterface` + `MediaAdditionalDataTrait` | Boolean flags: `verifyDownload`, `aiGenerated` |
+
+## Commands
+
+### `alengo:translated-media:format-cache:warm`
+
+Pre-generates ("warms") the local format cache (`public/uploads/media`) for every image media, so the frontend never has to generate a thumbnail on the first request. Because the `TranslatedFormatManager` stores each rendition under the *URL filename*, the command warms one cache entry per distinct base filename: the original filename (covers every locale without a SEO override) plus the slugged `seoFilename` of every translation. For each base filename it warms both the x1 variant (e.g. `800x600`) and the x2 / retina variant (`800x600@2x`), each in `jpg`, `webp` and `avif` (intersected with the formats Sulu can actually produce for the source mime type).
+
+```bash
+bin/console alengo:translated-media:format-cache:warm
+bin/console alengo:translated-media:format-cache:warm --dry-run
+bin/console alengo:translated-media:format-cache:warm --media=1,42,99 --extensions=webp,avif
+```
+
+`jpeg` is accepted as an alias for `jpg` — Sulu normalises both to the `jpg` cache extension, so there is no separate `.jpeg` cache file.
+
+| Option | Default | Description |
+|---|---|---|
+| `--source` / `-s` | `config/app/image-formats.yaml` | Source YAML file with the base format keys (relative to project root) |
+| `--extensions` / `-x` | `jpg,webp,avif` | Comma-separated output extensions to warm |
+| `--media` / `-m` | _(all)_ | Restrict to a comma-separated list of media IDs |
+| `--dry-run` | | List what would be generated without writing any file |

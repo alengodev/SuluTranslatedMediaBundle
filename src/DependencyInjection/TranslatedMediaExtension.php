@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Alengo\SuluTranslatedMediaBundle\DependencyInjection;
 
 use Alengo\SuluTranslatedMediaBundle\Admin\MediaAdmin;
+use Alengo\SuluTranslatedMediaBundle\Command\WarmMediaFormatCacheCommand;
 use Alengo\SuluTranslatedMediaBundle\Controller\Admin\MediaAdditionalDataController;
 use Alengo\SuluTranslatedMediaBundle\Twig\TranslatedMediaExtension as TwigExtension;
 use Sulu\Bundle\MediaBundle\Media\FormatCache\FormatCacheInterface;
@@ -92,6 +93,17 @@ class TranslatedMediaExtension extends Extension implements PrependExtensionInte
         $controllerDef->addArgument(new Reference('sulu_http_cache.cache_manager', ContainerBuilder::NULL_ON_INVALID_REFERENCE));
         $controllerDef->setPublic(true);
         $container->setDefinition(MediaAdditionalDataController::class, $controllerDef);
+
+        // Format cache warming command
+        $warmCommandDef = new Definition(WarmMediaFormatCacheCommand::class);
+        $warmCommandDef->addArgument(new Reference('sulu_media.format_manager'));
+        $warmCommandDef->addArgument(new Reference('doctrine.orm.entity_manager'));
+        $warmCommandDef->addArgument(new Reference('slugger'));
+        $warmCommandDef->addArgument('%sulu_media.image.formats%');
+        $warmCommandDef->addArgument($config['media_class']);
+        $warmCommandDef->addArgument('%kernel.project_dir%');
+        $warmCommandDef->addTag('console.command');
+        $container->setDefinition(WarmMediaFormatCacheCommand::class, $warmCommandDef);
     }
 
     public function getAlias(): string
