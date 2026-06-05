@@ -83,8 +83,11 @@ Pre-generates ("warms") the local format cache (`public/uploads/media`) for ever
 ```bash
 bin/console alengo:translated-media:format-cache:warm
 bin/console alengo:translated-media:format-cache:warm --dry-run
+bin/console alengo:translated-media:format-cache:warm --skip-existing
 bin/console alengo:translated-media:format-cache:warm --media=1,42,99 --extensions=webp,avif
 ```
+
+By default existing cache files are **overwritten** (re-encoded). Pass `--skip-existing` to leave already-cached renditions untouched and only generate the missing ones — much faster for incremental re-runs.
 
 `jpeg` is accepted as an alias for `jpg` — Sulu normalises both to the `jpg` cache extension, so there is no separate `.jpeg` cache file.
 
@@ -93,4 +96,5 @@ bin/console alengo:translated-media:format-cache:warm --media=1,42,99 --extensio
 | `--source` / `-s` | `config/app/image-formats.yaml` | Source YAML file with the base format keys (relative to project root) |
 | `--extensions` / `-x` | `jpg,webp,avif` | Comma-separated output extensions to warm |
 | `--media` / `-m` | _(all)_ | Restrict to a comma-separated list of media IDs |
+| `--skip-existing` | | Skip renditions that already exist in the cache (faster re-runs) |
 | `--dry-run` | | List what would be generated without writing any file |

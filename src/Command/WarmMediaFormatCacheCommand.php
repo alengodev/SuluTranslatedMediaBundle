@@ -53,6 +53,8 @@ class WarmMediaFormatCacheCommand extends Command
         private readonly array $registeredFormats,
         private readonly string $mediaClass,
         private readonly string $projectDir,
+        private readonly string $formatCachePath,
+        private readonly int $formatCacheSegments,
     ) {
         parent::__construct();
     }
@@ -63,6 +65,7 @@ class WarmMediaFormatCacheCommand extends Command
             ->addOption('source', 's', InputOption::VALUE_REQUIRED, 'Source YAML file with the base format keys', 'config/app/image-formats.yaml')
             ->addOption('extensions', 'x', InputOption::VALUE_REQUIRED, 'Comma-separated output extensions to warm', 'jpg,webp,avif')
             ->addOption('media', 'm', InputOption::VALUE_REQUIRED, 'Restrict to a comma-separated list of media IDs')
+            ->addOption('skip-existing', null, InputOption::VALUE_NONE, 'Skip renditions that already exist in the cache (faster re-runs)')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'List what would be generated without writing any file');
     }
 
@@ -70,6 +73,7 @@ class WarmMediaFormatCacheCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
         $dryRun = (bool) $input->getOption('dry-run');
+        $skipExisting = (bool) $input->getOption('skip-existing');
 
         // 1. Read base format keys from the YAML and expand each into [key, key@2x].
         $sourcePath = $this->projectDir . '/' . $input->getOption('source');
@@ -129,10 +133,12 @@ class WarmMediaFormatCacheCommand extends Command
             \sprintf('Format keys:  %d (incl. @2x)', \count($formatKeys)),
             \sprintf('Extensions:   %s', \implode(', ', $extensions)),
             \sprintf('Mode:         %s', $dryRun ? 'DRY-RUN (no files written)' : 'write'),
+            \sprintf('Skip existing: %s', $skipExisting ? 'yes' : 'no (overwrite)'),
         ]);
 
         $generated = 0;
         $failed = 0;
+        $skippedExisting = 0;
         $progressBar = $io->createProgressBar(\count($mediaList));
         $progressBar->start();
 
@@ -145,6 +151,12 @@ class WarmMediaFormatCacheCommand extends Command
                 foreach ($formatKeys as $formatKey) {
                     foreach ($targetExtensions as $extension) {
                         $fileName = $baseName . '.' . $extension;
+
+                        if ($skipExisting && \is_file($this->cacheFilePath($media['id'], $formatKey, $fileName))) {
+                            ++$skippedExisting;
+
+                            continue;
+                        }
 
                         if ($dryRun) {
                             ++$generated;
@@ -183,21 +195,34 @@ class WarmMediaFormatCacheCommand extends Command
         $progressBar->finish();
         $io->newLine(2);
 
+        $skippedNote = $skippedExisting > 0 ? \sprintf(' (%d already cached, skipped)', $skippedExisting) : '';
+
         if ($dryRun) {
-            $io->success(\sprintf('Dry-run: %d cache file(s) would be generated.', $generated));
+            $io->success(\sprintf('Dry-run: %d cache file(s) would be generated%s.', $generated, $skippedNote));
 
             return Command::SUCCESS;
         }
 
         if ($failed > 0) {
-            $io->warning(\sprintf('Generated %d cache file(s), %d failed.', $generated, $failed));
+            $io->warning(\sprintf('Generated %d cache file(s)%s, %d failed.', $generated, $skippedNote, $failed));
 
             return Command::FAILURE;
         }
 
-        $io->success(\sprintf('Generated %d cache file(s).', $generated));
+        $io->success(\sprintf('Generated %d cache file(s)%s.', $generated, $skippedNote));
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Computes the local cache path for a rendition, mirroring Sulu's LocalFormatCache::getPath()
+     * (path/<formatKey>/<segment>/<id>-<fileName>, segment = id %% segments, zero-padded).
+     */
+    private function cacheFilePath(int $id, string $formatKey, string $fileName): string
+    {
+        $segment = \sprintf('%0' . \strlen((string) $this->formatCacheSegments) . 'd', $id % $this->formatCacheSegments);
+
+        return \rtrim($this->formatCachePath, '/') . '/' . $formatKey . '/' . $segment . '/' . $id . '-' . $fileName;
     }
 
     /**

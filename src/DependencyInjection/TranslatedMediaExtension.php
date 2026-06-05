@@ -102,6 +102,8 @@ class TranslatedMediaExtension extends Extension implements PrependExtensionInte
         $warmCommandDef->addArgument('%sulu_media.image.formats%');
         $warmCommandDef->addArgument($config['media_class']);
         $warmCommandDef->addArgument('%kernel.project_dir%');
+        $warmCommandDef->addArgument('%sulu_media.format_cache.path%');
+        $warmCommandDef->addArgument('%sulu_media.format_cache.segments%');
         $warmCommandDef->addTag('console.command');
         $container->setDefinition(WarmMediaFormatCacheCommand::class, $warmCommandDef);
     }
