@@ -47,7 +47,7 @@ class MediaAdditionalDataController implements SecuredControllerInterface
     /**
      * @return array<string, mixed>
      */
-    private function getDataForEntity(MediaTranslationsAwareInterface $entity, ?string $locale): array
+    private function getDataForEntity(MediaInterface&MediaTranslationsAwareInterface $entity, ?string $locale): array
     {
         $translations = [];
         foreach ($entity->getMediaTranslations() as $translation) {
@@ -76,7 +76,7 @@ class MediaAdditionalDataController implements SecuredControllerInterface
     /**
      * @param array<string, mixed> $data
      */
-    private function mapDataToEntity(array $data, MediaTranslationsAwareInterface $entity, ?string $locale): void
+    private function mapDataToEntity(array $data, MediaInterface&MediaTranslationsAwareInterface $entity, ?string $locale): void
     {
         $entity->setMediaTranslation([
             'title' => $data['title'] ?? null,
@@ -90,7 +90,7 @@ class MediaAdditionalDataController implements SecuredControllerInterface
         }
     }
 
-    private function findMediaOrFail(int $id): MediaTranslationsAwareInterface
+    private function findMediaOrFail(int $id): MediaInterface&MediaTranslationsAwareInterface
     {
         $media = $this->entityManager->getRepository(MediaInterface::class)->find($id);
 

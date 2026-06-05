@@ -106,12 +106,13 @@ final class DecodeOnceEqualityTest extends TestCase
             null,
         );
 
-        $capturingCache = $this->capturingCache();
+        /** @var array<string, string> $saved */
+        $saved = [];
 
         // returnImage() must never be reached: that would mean the decode-once fast path silently fell back.
         $warmer = new MediaFormatCacheWarmer(
             $this->throwingFormatManager(),
-            $capturingCache,
+            $this->capturingCache($saved),
             $imagine,
             $storage,
             $extractor,
@@ -133,7 +134,7 @@ final class DecodeOnceEqualityTest extends TestCase
         foreach ($formatKeys as $formatKey) {
             foreach ($extensions as $extension) {
                 $expected = $converter->convert($this->fileVersion(), $formatKey, $extension);
-                $actual = $capturingCache->saved[$formatKey . '|source.' . $extension] ?? null;
+                $actual = $saved[$formatKey . '|source.' . $extension] ?? null;
 
                 self::assertIsString($actual, "{$name}: missing decode-once output for {$formatKey}/{$extension}");
                 self::assertSame(
@@ -224,130 +225,57 @@ final class DecodeOnceEqualityTest extends TestCase
 
     private function storage(string $fixturePath): StorageInterface
     {
-        return new class($fixturePath) implements StorageInterface {
-            public function __construct(private readonly string $path)
-            {
-            }
+        $storage = $this->createStub(StorageInterface::class);
+        $storage->method('load')->willReturnCallback(static function () use ($fixturePath) {
+            $resource = \fopen($fixturePath, 'rb');
+            \assert(false !== $resource);
 
-            public function load(array $storageOptions)
-            {
-                return \fopen($this->path, 'rb');
-            }
+            return $resource;
+        });
 
-            public function save(string $tempPath, string $fileName, array $storageOptions = []): array
-            {
-                throw new \LogicException('not used');
-            }
-
-            public function getPath(array $storageOptions): string
-            {
-                throw new \LogicException('not used');
-            }
-
-            public function getType(array $storageOptions): string
-            {
-                throw new \LogicException('not used');
-            }
-
-            public function move(array $sourceStorageOptions, array $targetStorageOptions): array
-            {
-                throw new \LogicException('not used');
-            }
-
-            public function remove(array $storageOptions): void
-            {
-                throw new \LogicException('not used');
-            }
-        };
+        return $storage;
     }
 
     private function imageExtractor(): MediaImageExtractorInterface
     {
-        return new class implements MediaImageExtractorInterface {
-            public function extract($resource, string $resourceMimeType)
-            {
-                return $resource;
-            }
-        };
+        $extractor = $this->createStub(MediaImageExtractorInterface::class);
+        $extractor->method('extract')->willReturnArgument(0);
+
+        return $extractor;
     }
 
     private function emptyTransformationPool(): TransformationPoolInterface
     {
-        return new class implements TransformationPoolInterface {
-            public function get($name)
-            {
-                throw new \LogicException('no transformations configured in this test');
-            }
-        };
+        $pool = $this->createStub(TransformationPoolInterface::class);
+        $pool->method('get')->willThrowException(new \LogicException('no transformations configured in this test'));
+
+        return $pool;
     }
 
     private function throwingFormatManager(): FormatManagerInterface
     {
-        return new class implements FormatManagerInterface {
-            public function returnImage($id, $formatKey, $imageFormat, ?int $version = null)
-            {
-                throw new \LogicException('FormatManager fallback must not be reached in the decode-once equality test');
-            }
+        $formatManager = $this->createStub(FormatManagerInterface::class);
+        $formatManager->method('returnImage')->willThrowException(
+            new \LogicException('FormatManager fallback must not be reached in the decode-once equality test'),
+        );
 
-            public function getFormats($id, $fileName, $version, $subVersion, $mimeType)
-            {
-                return [];
-            }
-
-            public function getFormatDefinition($formatKey, $locale = null)
-            {
-                return null;
-            }
-
-            public function getFormatDefinitions($locale = null)
-            {
-                return [];
-            }
-
-            public function purge($idMedia, $fileName, $mimeType)
-            {
-                return true;
-            }
-
-            public function clearCache()
-            {
-                return true;
-            }
-        };
+        return $formatManager;
     }
 
-    private function capturingCache(): FormatCacheInterface
+    /**
+     * @param array<string, string> $saved captured by reference: "<formatKey>|<fileName>" => encoded bytes
+     */
+    private function capturingCache(array &$saved): FormatCacheInterface
     {
-        return new class implements FormatCacheInterface {
-            /** @var array<string, string> */
-            public array $saved = [];
-
-            public function save($content, $id, $fileName, $format)
-            {
-                $this->saved[$format . '|' . $fileName] = $content;
+        $cache = $this->createStub(FormatCacheInterface::class);
+        $cache->method('save')->willReturnCallback(
+            function (string $content, int $id, string $fileName, string $format) use (&$saved): bool {
+                $saved[$format . '|' . $fileName] = $content;
 
                 return true;
-            }
+            },
+        );
 
-            public function purge($id, $fileName, $format)
-            {
-                return true;
-            }
-
-            public function getMediaUrl($id, $fileName, $format, $version, $subVersion)
-            {
-                return '';
-            }
-
-            public function analyzedMediaUrl($url)
-            {
-                return [];
-            }
-
-            public function clear()
-            {
-                return true;
-            }
-        };
+        return $cache;
     }
 }

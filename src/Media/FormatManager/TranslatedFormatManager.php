@@ -10,6 +10,7 @@ use Sulu\Bundle\MediaBundle\Entity\File;
 use Sulu\Bundle\MediaBundle\Entity\FileVersion;
 use Sulu\Bundle\MediaBundle\Entity\MediaInterface;
 use Sulu\Bundle\MediaBundle\Entity\MediaRepositoryInterface;
+use Sulu\Bundle\MediaBundle\Media\Exception\FormatNotFoundException;
 use Sulu\Bundle\MediaBundle\Media\Exception\ImageProxyException;
 use Sulu\Bundle\MediaBundle\Media\Exception\ImageProxyInvalidImageFormat;
 use Sulu\Bundle\MediaBundle\Media\Exception\ImageProxyInvalidUrl;
@@ -26,9 +27,23 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * The default FormatManager validates that the URL filename matches the FileVersion name.
  * This class skips that validation to allow SEO-friendly translated URLs.
+ *
+ * @phpstan-type ImageFormatDefinition array{
+ *     key: string,
+ *     scale: array<string, mixed>,
+ *     meta?: array{title?: array<string, string>},
+ *     internal?: bool,
+ *     options?: array<string, mixed>,
+ *     transformations?: array<int, mixed>
+ * }
+ * @phpstan-type FormatDefinition array{internal: mixed, key: string, title: string, scale: mixed}
  */
 class TranslatedFormatManager implements FormatManagerInterface
 {
+    /**
+     * @param array<string, string>               $responseHeaders
+     * @param array<string, ImageFormatDefinition> $formats
+     */
     public function __construct(
         private readonly MediaRepositoryInterface $mediaRepository,
         private readonly FormatCacheInterface $formatCache,
@@ -101,12 +116,15 @@ class TranslatedFormatManager implements FormatManagerInterface
                 );
             }
 
+            // The converter is documented as returning an ImageInterface, but every implementation returns the
+            // encoded image as a binary string (Imagine's ImageInterface::get()).
+            /** @var string $responseContent */
             $responseContent = $this->converter->convert($fileVersion, $formatKey, $imageFormat);
 
             $setExpireHeaders = true;
 
             $finfo = new \finfo(\FILEINFO_MIME_TYPE);
-            $mimeType = $finfo->buffer($responseContent);
+            $mimeType = $finfo->buffer($responseContent) ?: null;
 
             // Save with the (translated) URL filename so the web server can serve it directly next time
             if ($this->saveImage) {
@@ -118,7 +136,7 @@ class TranslatedFormatManager implements FormatManagerInterface
                 );
             }
         } catch (ImageProxyException $e) {
-            $this->logger->debug($e->getMessage(), ['exception' => $e]);
+            $this->logger?->debug($e->getMessage(), ['exception' => $e]);
             $responseContent = null;
             $status = 404;
             $mimeType = null;
@@ -127,6 +145,9 @@ class TranslatedFormatManager implements FormatManagerInterface
         return new Response($responseContent, $status, $this->getResponseHeaders($mimeType, $setExpireHeaders));
     }
 
+    /**
+     * @return array<string, string>
+     */
     public function getFormats($id, $fileName, $version, $subVersion, $mimeType): array
     {
         $formats = [];
@@ -157,7 +178,7 @@ class TranslatedFormatManager implements FormatManagerInterface
         return $formats;
     }
 
-    public function purge($idMedia, $fileName, $mimeType): void
+    public function purge($idMedia, $fileName, $mimeType): bool
     {
         $extensions = $this->converter->getSupportedOutputImageFormats($mimeType);
         foreach ($this->formats as $format) {
@@ -165,6 +186,8 @@ class TranslatedFormatManager implements FormatManagerInterface
                 $this->formatCache->purge($idMedia, $this->replaceExtension($fileName, $extension), $format['key']);
             }
         }
+
+        return true;
     }
 
     public function clearCache(): void
@@ -172,15 +195,21 @@ class TranslatedFormatManager implements FormatManagerInterface
         $this->formatCache->clear();
     }
 
+    /**
+     * @return FormatDefinition
+     */
     public function getFormatDefinition($formatKey, $locale = null)
     {
         if (!isset($this->formats[$formatKey])) {
-            return null;
+            throw new FormatNotFoundException($formatKey);
         }
 
         return $this->getFormatDefinitionWithMeta($this->formats[$formatKey], $locale);
     }
 
+    /**
+     * @return array<array-key, FormatDefinition>
+     */
     public function getFormatDefinitions($locale = null): array
     {
         $formatDefinitions = [];
@@ -213,11 +242,14 @@ class TranslatedFormatManager implements FormatManagerInterface
         return $fileVersion;
     }
 
+    /**
+     * @return array<string, string>
+     */
     protected function getResponseHeaders(?string $mimeType = '', bool $setExpireHeaders = false): array
     {
         $headers = [];
 
-        if (!\in_array($mimeType, [null, '', '0'], true)) {
+        if (null !== $mimeType && '' !== $mimeType && '0' !== $mimeType) {
             $headers['Content-Type'] = $mimeType;
         }
 
@@ -235,14 +267,20 @@ class TranslatedFormatManager implements FormatManagerInterface
         return $info['filename'] . '.' . $newExtension;
     }
 
+    /**
+     * @param ImageFormatDefinition $format
+     *
+     * @return FormatDefinition
+     */
     private function getFormatDefinitionWithMeta(array $format, ?string $locale): array
     {
         $title = $format['key'];
-        if (isset($format['meta']['title'][$locale])) {
+        if (null !== $locale && isset($format['meta']['title'][$locale])) {
             $title = $format['meta']['title'][$locale];
         }
 
         return [
+            'internal' => $format['internal'] ?? false,
             'key' => $format['key'],
             'title' => $title,
             'scale' => $format['scale'],

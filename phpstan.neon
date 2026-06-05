@@ -1,0 +1,12 @@
+parameters:
+    level: 8
+    paths:
+        - src
+        - tests
+    ignoreErrors:
+        # MediaTranslations::$locale is nullable in PHP while its column is (intentionally) NOT NULL.
+        # Aligning the two means making the locale a required field end-to-end (entity + trait + controller),
+        # which is a behaviour/contract change deferred to a dedicated commit.
+        -
+            identifier: doctrine.columnType
+            path: src/Entity/MediaTranslations.php

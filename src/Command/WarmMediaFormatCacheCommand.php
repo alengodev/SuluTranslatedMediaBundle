@@ -531,7 +531,7 @@ class WarmMediaFormatCacheCommand extends Command
         }
 
         $parts = \explode('/', $raw, 2);
-        $index = (int) ($parts[0] ?? 0);
+        $index = (int) $parts[0];
         $count = (int) ($parts[1] ?? 0);
         if ($count < 1 || $index < 0 || $index >= $count) {
             return null;
