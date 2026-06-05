@@ -3,6 +3,10 @@ parameters:
     paths:
         - src
         - tests
+    # Option/argument types inferred by phpstan-symfony come from PHPDoc, not native types; do not treat them
+    # as certain, otherwise harmless runtime-reachable ternaries (e.g. the --dry-run summary line) are reported
+    # as "always true".
+    treatPhpDocTypesAsCertain: false
     ignoreErrors:
         # MediaTranslations::$locale is nullable in PHP while its column is (intentionally) NOT NULL.
         # Aligning the two means making the locale a required field end-to-end (entity + trait + controller),
