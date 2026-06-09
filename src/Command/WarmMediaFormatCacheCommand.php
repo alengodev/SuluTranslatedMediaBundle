@@ -107,10 +107,16 @@ class WarmMediaFormatCacheCommand extends Command
         }
 
         $parsed = Yaml::parseFile($sourcePath);
+        // Prefer the project's explicit warm-cache subset ("warm_cache_image_formats"); fall back to the
+        // full "image_formats" list for projects that don't define a subset.
         /** @var list<string> $baseKeys */
-        $baseKeys = \is_array($parsed) && \is_array($parsed['image_formats'] ?? null) ? $parsed['image_formats'] : [];
+        $baseKeys = match (true) {
+            \is_array($parsed) && \is_array($parsed['warm_cache_image_formats'] ?? null) => $parsed['warm_cache_image_formats'],
+            \is_array($parsed) && \is_array($parsed['image_formats'] ?? null) => $parsed['image_formats'],
+            default => [],
+        };
         if ([] === $baseKeys) {
-            $io->warning('No image formats found in source file.');
+            $io->warning('No image formats found in source file (expected "warm_cache_image_formats" or "image_formats").');
 
             return Command::SUCCESS;
         }
