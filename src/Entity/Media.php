@@ -12,7 +12,8 @@ use Doctrine\ORM\Mapping as ORM;
 use Sulu\Bundle\MediaBundle\Entity\Media as SuluMedia;
 
 /**
- * ORM 3.x: Parent associations are added via SuluEntityMetadataSubscriber.
+ * Sulu maps its base Media as a Doctrine mapped-superclass, so this concrete entity
+ * inherits all parent field/association mappings automatically.
  */
 #[ORM\Table(name: 'me_media')]
 #[ORM\Entity]

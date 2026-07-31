@@ -1,6 +1,8 @@
 # SuluTranslatedMediaBundle
 
-SEO-friendly translated media filenames for [Sulu CMS](https://sulu.io/) 3.x.
+SEO-friendly translated media filenames for [Sulu CMS](https://sulu.io/) 2.6.
+
+> This is the **2.x** branch, compatible with Sulu 2.6. For Sulu 3.x use the [`3.x`](../../tree/3.x) branch.
 
 Serves media files under locale-specific SEO filenames (e.g. `/uploads/red-shoes-de.jpg`) while keeping the original file stored under its original name. Includes an "Additional Data" admin tab with locale-aware title, description, and SEO filename fields — plus optional boolean flags (`verifyDownload`, `aiGenerated`).
 
@@ -17,8 +19,8 @@ Serves media files under locale-specific SEO filenames (e.g. `/uploads/red-shoes
 ## Requirements
 
 - PHP 8.2+
-- Sulu CMS ~3.0
-- Symfony 7.x
+- Sulu CMS ~2.6
+- Symfony 6.4 or 7.x
 
 ## Installation
 

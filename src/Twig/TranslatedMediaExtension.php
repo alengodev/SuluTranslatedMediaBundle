@@ -6,9 +6,9 @@ namespace Alengo\SuluTranslatedMediaBundle\Twig;
 
 use Alengo\SuluTranslatedMediaBundle\Model\MediaTranslationsAwareInterface;
 use Doctrine\ORM\EntityManagerInterface;
-use Sulu\Bundle\HttpCacheBundle\ReferenceStore\ReferenceStoreInterface;
 use Sulu\Bundle\MediaBundle\Api\Media as ApiMedia;
 use Sulu\Bundle\MediaBundle\Media\FormatCache\FormatCacheInterface;
+use Sulu\Bundle\WebsiteBundle\ReferenceStore\ReferenceStoreInterface;
 use Symfony\Component\String\Slugger\SluggerInterface;
 use Twig\Extension\AbstractExtension;
 use Twig\TwigFunction;
@@ -69,7 +69,9 @@ class TranslatedMediaExtension extends AbstractExtension
             return null;
         }
 
-        $this->referenceStore?->add((string) $mediaData['id'], 'media');
+        // In Sulu 2.6 each resource has its own reference store, so add() takes only the id
+        // (the injected store is sulu_media.reference_store.media).
+        $this->referenceStore?->add((string) $mediaData['id']);
 
         $translatedFileName = $this->getTranslatedFileName(
             $mediaData['id'],

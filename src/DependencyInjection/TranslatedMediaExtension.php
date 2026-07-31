@@ -73,7 +73,7 @@ class TranslatedMediaExtension extends Extension implements PrependExtensionInte
         $twigDef->addArgument(new Reference('sulu_media.format_cache'));
         $twigDef->addArgument(new Reference('slugger'));
         $twigDef->addArgument($config['media_class']);
-        $twigDef->addArgument(new Reference('sulu_http_cache.reference_store', ContainerBuilder::NULL_ON_INVALID_REFERENCE));
+        $twigDef->addArgument(new Reference('sulu_media.reference_store.media', ContainerBuilder::NULL_ON_INVALID_REFERENCE));
         $twigDef->addArgument(['webp' => 'image/webp']);
         $twigDef->addTag('twig.extension');
         $container->setDefinition(TwigExtension::class, $twigDef);

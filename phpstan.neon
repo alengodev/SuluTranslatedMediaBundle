@@ -14,3 +14,18 @@ parameters:
         -
             identifier: doctrine.columnType
             path: src/Entity/MediaTranslations.php
+        # Sulu 2.6 reserves a trailing parameter on these interface methods in a comment and reads it via
+        # func_get_args() in the concrete implementation (a forward-compatibility pattern towards Sulu 3.x,
+        # where the parameter is declared natively). Passing it is intentional and required at runtime:
+        #  - findMediaByIdForRendering($id, $formatKey, $version): $version loads the requested (old) file
+        #    version so returnImage() can emit the "moved permanently" redirect instead of a 404.
+        #  - extract($resource, $mimeType): $mimeType selects the correct decoder (PDF/PSD/video) and avoids
+        #    a "calling extract() without $resourceMimeType is deprecated" notice.
+        -
+            message: '#::findMediaByIdForRendering\(\) invoked with 3 parameters, 2 required#'
+            identifier: arguments.count
+            path: src/Media/FormatManager/TranslatedFormatManager.php
+        -
+            message: '#::extract\(\) invoked with 2 parameters, 1 required#'
+            identifier: arguments.count
+            path: src/Media/FormatManager/MediaFormatCacheWarmer.php
