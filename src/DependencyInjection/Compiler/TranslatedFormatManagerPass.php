@@ -12,7 +12,7 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
  * Replaces Sulu's default FormatManager with TranslatedFormatManager.
  *
  * The existing service definition and all its arguments are preserved —
- * only the class is swapped, so no manual argument re-declaration is needed.
+ * only the class is swapped and the progressive-format arguments are appended.
  */
 class TranslatedFormatManagerPass implements CompilerPassInterface
 {
@@ -22,7 +22,17 @@ class TranslatedFormatManagerPass implements CompilerPassInterface
             return;
         }
 
-        $container->getDefinition('sulu_media.format_manager')
+        $definition = $container->getDefinition('sulu_media.format_manager')
             ->setClass(TranslatedFormatManager::class);
+
+        // Progressive formats: chain + fallback max-age, plus the local format cache location so the manager
+        // can check which renditions already exist.
+        if ($container->hasParameter('alengo_translated_media.progressive_formats.chain')) {
+            $definition
+                ->setArgument('$progressiveChain', '%alengo_translated_media.progressive_formats.chain%')
+                ->setArgument('$progressiveMaxAge', '%alengo_translated_media.progressive_formats.fallback_max_age%')
+                ->setArgument('$formatCachePath', '%sulu_media.format_cache.path%')
+                ->setArgument('$formatCacheSegments', '%sulu_media.format_cache.segments%');
+        }
     }
 }
