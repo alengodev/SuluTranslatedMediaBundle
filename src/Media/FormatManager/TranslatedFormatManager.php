@@ -28,6 +28,11 @@ use Symfony\Component\HttpFoundation\Response;
  * The default FormatManager validates that the URL filename matches the FileVersion name.
  * This class skips that validation to allow SEO-friendly translated URLs.
  *
+ * Progressive formats (opt-in, see `alengo_translated_media.progressive_formats`): a request for a deferred
+ * format (e.g. avif) only produces the cheapest rendition that is still missing from the local format cache
+ * (original -> webp -> avif) and serves that one with a short Cache-Control. Every request therefore performs
+ * at most one encoding, and the requested format exists after a few visits.
+ *
  * @phpstan-type ImageFormatDefinition array{
  *     key: string,
  *     scale: array<string, mixed>,
@@ -43,6 +48,7 @@ class TranslatedFormatManager implements FormatManagerInterface
     /**
      * @param array<string, string>               $responseHeaders
      * @param array<string, ImageFormatDefinition> $formats
+     * @param list<string>                         $progressiveChain deferred extensions in generation order; empty disables progressive formats
      */
     public function __construct(
         private readonly MediaRepositoryInterface $mediaRepository,
@@ -52,6 +58,10 @@ class TranslatedFormatManager implements FormatManagerInterface
         private readonly array $responseHeaders,
         private array $formats,
         private readonly ?LoggerInterface $logger = new NullLogger(),
+        private readonly array $progressiveChain = [],
+        private readonly int $progressiveMaxAge = 60,
+        private readonly ?string $formatCachePath = null,
+        private readonly int $formatCacheSegments = 10,
     ) {
     }
 
@@ -61,6 +71,7 @@ class TranslatedFormatManager implements FormatManagerInterface
         $responseContent = null;
         $mimeType = null;
         $status = 200;
+        $isIntermediate = false;
 
         try {
             $info = \pathinfo($fileName);
@@ -116,25 +127,33 @@ class TranslatedFormatManager implements FormatManagerInterface
                 );
             }
 
-            // The converter is documented as returning an ImageInterface, but every implementation returns the
-            // encoded image as a binary string (Imagine's ImageInterface::get()).
-            /** @var string $responseContent */
-            $responseContent = $this->converter->convert($fileVersion, $formatKey, $imageFormat);
+            $requestedFormat = $imageFormat;
+            $step = $this->resolveProgressiveStep((int) $media->getId(), $formatKey, $fileName, $imageFormat, \array_values($supportedImageFormats));
+            if (null !== $step) {
+                $imageFormat = $step;
+                $isIntermediate = true;
+            }
 
-            $setExpireHeaders = true;
+            $responseContent = $this->convertAndSave($fileVersion, (int) $media->getId(), $formatKey, $fileName, $imageFormat, $saved);
+
+            // An intermediate step that cannot be cached would be served forever instead of the requested format —
+            // generate the requested format right away instead (e.g. filenames the filesystem refuses).
+            if ($isIntermediate && !$saved) {
+                $this->logger?->warning('Progressive format step "{step}" could not be cached for media #{id} ("{file}"); generating "{format}" directly.', [
+                    'step' => $imageFormat,
+                    'id' => $media->getId(),
+                    'file' => $fileName,
+                    'format' => $requestedFormat,
+                ]);
+                $imageFormat = $requestedFormat;
+                $isIntermediate = false;
+                $responseContent = $this->convertAndSave($fileVersion, (int) $media->getId(), $formatKey, $fileName, $imageFormat, $saved);
+            }
+
+            $setExpireHeaders = !$isIntermediate;
 
             $finfo = new \finfo(\FILEINFO_MIME_TYPE);
             $mimeType = $finfo->buffer($responseContent) ?: null;
-
-            // Save with the (translated) URL filename so the web server can serve it directly next time
-            if ($this->saveImage) {
-                $this->formatCache->save(
-                    $responseContent,
-                    $media->getId(),
-                    $this->replaceExtension($fileName, $imageFormat),
-                    $formatKey,
-                );
-            }
         } catch (ImageProxyException $e) {
             $this->logger?->debug($e->getMessage(), ['exception' => $e]);
             $responseContent = null;
@@ -142,7 +161,89 @@ class TranslatedFormatManager implements FormatManagerInterface
             $mimeType = null;
         }
 
-        return new Response($responseContent, $status, $this->getResponseHeaders($mimeType, $setExpireHeaders));
+        $headers = $this->getResponseHeaders($mimeType, $setExpireHeaders);
+        if ($isIntermediate && 200 === $status) {
+            $headers['Cache-Control'] = \sprintf('public, max-age=%d', $this->progressiveMaxAge);
+            // An explicit Expires keeps Apache's mod_expires (ExpiresByType image/*) from overriding the short lifetime.
+            $headers['Expires'] = \gmdate('D, d M Y H:i:s', \time() + $this->progressiveMaxAge) . ' GMT';
+        }
+
+        return new Response($responseContent, $status, $headers);
+    }
+
+    /**
+     * Converts one rendition and — when enabled — saves it under the (translated) URL filename so the web server
+     * can serve it directly next time.
+     *
+     * @param-out bool $saved
+     */
+    private function convertAndSave(FileVersion $fileVersion, int $mediaId, string $formatKey, string $fileName, string $extension, ?bool &$saved = null): string
+    {
+        // The converter is documented as returning an ImageInterface, but every implementation returns the
+        // encoded image as a binary string (Imagine's ImageInterface::get()).
+        /** @var string $content */
+        $content = $this->converter->convert($fileVersion, $formatKey, $extension);
+
+        $saved = $this->saveImage && false !== $this->formatCache->save(
+            $content,
+            $mediaId,
+            $this->replaceExtension($fileName, $extension),
+            $formatKey,
+        );
+
+        return $content;
+    }
+
+    /**
+     * Returns the extension to generate instead of the requested one when an earlier step of the progressive
+     * chain is still missing from the format cache, or null to generate the requested format itself.
+     *
+     * @param list<string> $supportedImageFormats first entry is the source's preferred (original) extension
+     */
+    private function resolveProgressiveStep(int $mediaId, string $formatKey, string $fileName, string $requested, array $supportedImageFormats): ?string
+    {
+        if (!$this->saveImage || null === $this->formatCachePath || [] === $this->progressiveChain) {
+            return null;
+        }
+
+        $position = \array_search($requested, $this->progressiveChain, true);
+        if (false === $position) {
+            return null;
+        }
+
+        // Only raster sources — an SVG or (animated) GIF intermediate under an avif/webp URL is not wanted.
+        $original = $supportedImageFormats[0] ?? null;
+        if (!\in_array($original, ['jpg', 'png', 'webp'], true)) {
+            return null;
+        }
+
+        $steps = \array_unique([$original, ...\array_slice($this->progressiveChain, 0, (int) $position + 1)]);
+
+        foreach ($steps as $extension) {
+            if ($extension === $requested) {
+                return null;
+            }
+
+            if (!\in_array($extension, $supportedImageFormats, true)) {
+                continue;
+            }
+
+            if (!\is_file($this->cacheFilePath($mediaId, $formatKey, $this->replaceExtension($fileName, $extension)))) {
+                return $extension;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Mirrors Sulu's LocalFormatCache::getPath(): <path>/<formatKey>/<segment>/<id>-<fileName>.
+     */
+    private function cacheFilePath(int $id, string $formatKey, string $fileName): string
+    {
+        $segment = \sprintf('%0' . \strlen((string) $this->formatCacheSegments) . 'd', $id % $this->formatCacheSegments);
+
+        return \rtrim((string) $this->formatCachePath, '/') . '/' . $formatKey . '/' . $segment . '/' . $id . '-' . $fileName;
     }
 
     /**

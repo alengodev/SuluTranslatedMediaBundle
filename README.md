@@ -13,6 +13,7 @@ Serves media files under locale-specific SEO filenames (e.g. `/uploads/red-shoes
 - **TranslatedFormatManager** — replaces Sulu's default FormatManager via compiler pass
 - **Twig functions** — `sulu_translated_media_url()` / `sulu_translated_media_urls()` with WebP support
 - **Format cache warming** — pre-generates the format cache (jpg/webp/avif, x1 & x2) for all image media under their translated filenames
+- **Progressive formats** (opt-in) — on-demand requests generate one rendition step at a time (jpg/png → webp → avif) instead of the expensive format right away
 - **Admin tab** — "Additional Data" tab auto-registered in the Sulu Media admin
 - **Zero-config** — `sulu_media.objects.media.model` and `sulu_admin` resources are auto-configured
 
@@ -66,6 +67,35 @@ That's it — no further configuration required.
     <img src="{{ urls.default }}">
 </picture>
 ```
+
+## Progressive Formats
+
+Image-heavy pages trigger many on-demand conversions on their first visit — and browsers request the
+AVIF source of every `<picture>`, the most expensive encoding. With progressive formats enabled, each
+request for a deferred format only generates the **cheapest rendition still missing** from the local
+format cache and serves it with a short `Cache-Control`:
+
+| Request | Cache contains | Generated & served | Cache-Control |
+|---|---|---|---|
+| `photo.avif` | — | `photo.jpg` (`image/jpeg`) | `public, max-age=60` |
+| `photo.avif` | jpg | `photo.webp` (`image/webp`) | `public, max-age=60` |
+| `photo.avif` | jpg, webp | `photo.avif` (`image/avif`) | Sulu response headers (immutable) |
+
+Every request performs at most one encoding; once the file exists the web server serves it directly.
+URLs in the HTML never change, so the page cache stays valid. PNG sources start with `png`; SVG/GIF
+sources and requests for formats outside the chain (e.g. `.jpg`) are unaffected.
+
+```yaml
+# config/packages/alengo_translated_media.yaml
+alengo_translated_media:
+    progressive_formats:
+        enabled: true
+        chain: [webp, avif]     # default — generation order after the original format
+        fallback_max_age: 60    # default — Cache-Control max-age for intermediate renditions
+```
+
+> A CDN in front of `/uploads/media` must respect the origin `Cache-Control`, otherwise an intermediate
+> rendition stays cached at the edge.
 
 ## Provided Models
 
