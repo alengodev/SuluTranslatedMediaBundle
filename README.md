@@ -18,7 +18,7 @@ Serves media files under locale-specific SEO filenames (e.g. `/uploads/red-shoes
 ## Requirements
 
 - PHP 8.2+
-- Sulu CMS ~3.0
+- Sulu CMS 3.0 or 3.1
 - Symfony 7.x or 8.x
 
 ## Installation

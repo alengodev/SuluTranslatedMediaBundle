@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Alengo\SuluTranslatedMediaBundle\Tests\Unit;
 
 use Alengo\SuluTranslatedMediaBundle\Media\FormatManager\TranslatedFormatManager;
+use Doctrine\Common\Collections\ArrayCollection;
 use PHPUnit\Framework\TestCase;
 use Sulu\Bundle\MediaBundle\Entity\File;
 use Sulu\Bundle\MediaBundle\Entity\FileVersion;
@@ -141,7 +142,7 @@ final class TranslatedFormatManagerProgressiveTest extends TestCase
 
         $media = $this->createMock(MediaInterface::class);
         $media->method('getId')->willReturn(self::MEDIA_ID);
-        $media->method('getFiles')->willReturn([$file]);
+        $media->method('getFiles')->willReturn(new ArrayCollection([$file]));
 
         $repository = $this->createMock(MediaRepositoryInterface::class);
         $repository->method('findMediaByIdForRendering')->willReturn($media);
