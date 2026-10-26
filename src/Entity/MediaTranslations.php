@@ -4,15 +4,24 @@ declare(strict_types=1);
 
 namespace Alengo\SuluTranslatedMediaBundle\Entity;
 
+use Alengo\SuluTranslatedMediaBundle\Model\AdditionalDataAwareInterface;
+use Alengo\SuluTranslatedMediaBundle\Model\AdditionalDataTrait;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Sulu\Bundle\MediaBundle\Entity\MediaInterface;
 
+/**
+ * Per-locale media data. `seoFilename` stays a dedicated column (the URL builder and
+ * cache warmer query it); all other localized fields live in the flexible
+ * {@see AdditionalDataTrait} column, configured via the bundle's localized_keys.
+ */
 #[ORM\Table(name: 'me_media_translations')]
 #[ORM\Entity]
 #[ORM\UniqueConstraint(name: 'assignment_unique', columns: ['media_id', 'locale'])]
-class MediaTranslations
+class MediaTranslations implements AdditionalDataAwareInterface
 {
+    use AdditionalDataTrait;
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -24,12 +33,6 @@ class MediaTranslations
 
     #[ORM\Column(type: Types::STRING, length: 255)]
     private ?string $locale = null;
-
-    #[ORM\Column(type: Types::STRING, length: 255, nullable: true)]
-    private ?string $title = null;
-
-    #[ORM\Column(type: Types::TEXT, nullable: true)]
-    private ?string $description = null;
 
     #[ORM\Column(type: Types::STRING, length: 255, nullable: true)]
     private ?string $seoFilename = null;
@@ -57,26 +60,6 @@ class MediaTranslations
     public function setLocale(?string $locale): void
     {
         $this->locale = $locale;
-    }
-
-    public function getTitle(): ?string
-    {
-        return $this->title;
-    }
-
-    public function setTitle(?string $title): void
-    {
-        $this->title = $title;
-    }
-
-    public function getDescription(): ?string
-    {
-        return $this->description;
-    }
-
-    public function setDescription(?string $description): void
-    {
-        $this->description = $description;
     }
 
     public function getSeoFilename(): ?string

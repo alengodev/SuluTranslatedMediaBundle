@@ -22,58 +22,5 @@
                 </property>
             </properties>
         </section>
-        <section name="download-info">
-            <meta>
-                <title lang="en">Download</title>
-                <title lang="de">Download</title>
-            </meta>
-            <properties>
-                <property name="title" type="text_line">
-                    <meta>
-                        <title lang="en">Title</title>
-                        <title lang="de">Titel</title>
-                        <info_text lang="en">Alternative title for the download option/section.</info_text>
-                        <info_text lang="de">Alternativer Titel für Download Option/Sektion.</info_text>
-                    </meta>
-                </property>
-                <property name="description" type="text_area">
-                    <meta>
-                        <title lang="en">Description</title>
-                        <title lang="de">Beschreibung</title>
-                        <info_text lang="en">Alternative description for the download option/section.</info_text>
-                        <info_text lang="de">Alternativer Beschreibung für Download Option/Sektion.</info_text>
-                    </meta>
-                </property>
-            </properties>
-        </section>
-        <section name="visibility">
-            <meta>
-                <title>sulu_admin.app.visibility</title>
-            </meta>
-            <properties>
-                <property name="verifyDownload" type="checkbox" colspan="3">
-                    <params>
-                        <param name="label">
-                            <meta>
-                                <title lang="en">Verify download</title>
-                                <title lang="de">Download bestätigen</title>
-                            </meta>
-                        </param>
-                        <param name="type" value="toggler"/>
-                    </params>
-                </property>
-                <property name="aiGenerated" type="checkbox" colspan="3">
-                    <params>
-                        <param name="label">
-                            <meta>
-                                <title lang="en">AI generated</title>
-                                <title lang="de">AI generiert</title>
-                            </meta>
-                        </param>
-                        <param name="type" value="toggler"/>
-                    </params>
-                </property>
-            </properties>
-        </section>
     </properties>
 </form>

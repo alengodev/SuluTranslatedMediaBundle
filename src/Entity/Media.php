@@ -4,22 +4,26 @@ declare(strict_types=1);
 
 namespace Alengo\SuluTranslatedMediaBundle\Entity;
 
-use Alengo\SuluTranslatedMediaBundle\Model\MediaAdditionalDataInterface;
-use Alengo\SuluTranslatedMediaBundle\Model\MediaAdditionalDataTrait;
+use Alengo\SuluTranslatedMediaBundle\Model\AdditionalDataAwareInterface;
+use Alengo\SuluTranslatedMediaBundle\Model\AdditionalDataTrait;
 use Alengo\SuluTranslatedMediaBundle\Model\MediaTranslationsAwareInterface;
 use Alengo\SuluTranslatedMediaBundle\Model\MediaTranslationsTrait;
 use Doctrine\ORM\Mapping as ORM;
 use Sulu\Bundle\MediaBundle\Entity\Media as SuluMedia;
 
 /**
- * ORM 3.x: Parent associations are added via SuluEntityMetadataSubscriber.
+ * Sulu maps its base Media as a Doctrine mapped-superclass, so this concrete entity
+ * inherits all parent field/association mappings automatically.
+ *
+ * The {@see AdditionalDataTrait} column on this entity holds the unlocalized
+ * additional-data keys (per-media); localized keys live on {@see MediaTranslations}.
  */
 #[ORM\Table(name: 'me_media')]
 #[ORM\Entity]
-class Media extends SuluMedia implements MediaTranslationsAwareInterface, MediaAdditionalDataInterface
+class Media extends SuluMedia implements MediaTranslationsAwareInterface, AdditionalDataAwareInterface
 {
     use MediaTranslationsTrait;
-    use MediaAdditionalDataTrait;
+    use AdditionalDataTrait;
 
     public function __construct()
     {

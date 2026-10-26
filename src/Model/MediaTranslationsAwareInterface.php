@@ -15,7 +15,10 @@ interface MediaTranslationsAwareInterface
     public function getMediaTranslations(): Collection;
 
     /**
-     * @param array{title?: string|null, description?: string|null, seoFilename?: string|null}|null $data
+     * Creates or updates the translation for the given locale with the dedicated
+     * seoFilename and the flexible localized additional-data map.
+     *
+     * @param array<string, mixed> $additionalData
      */
-    public function setMediaTranslation(?array $data, ?string $locale): void;
+    public function setMediaTranslation(?string $seoFilename, array $additionalData, ?string $locale): void;
 }

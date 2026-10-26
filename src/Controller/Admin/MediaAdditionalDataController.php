@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Alengo\SuluTranslatedMediaBundle\Controller\Admin;
 
-use Alengo\SuluTranslatedMediaBundle\Model\MediaAdditionalDataInterface;
+use Alengo\SuluTranslatedMediaBundle\Model\AdditionalDataAwareInterface;
 use Alengo\SuluTranslatedMediaBundle\Model\MediaTranslationsAwareInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Sulu\Bundle\HttpCacheBundle\Cache\CacheManagerInterface;
@@ -18,8 +18,14 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class MediaAdditionalDataController implements SecuredControllerInterface
 {
+    /**
+     * @param list<string> $unlocalizedKeys form field keys stored once per media (me_media.additional_data)
+     * @param list<string> $localizedKeys   form field keys stored per locale (me_media_translations.additional_data)
+     */
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
+        private readonly array $unlocalizedKeys,
+        private readonly array $localizedKeys,
         private readonly ?CacheManagerInterface $cacheManager = null,
     ) {
     }
@@ -47,27 +53,31 @@ class MediaAdditionalDataController implements SecuredControllerInterface
     /**
      * @return array<string, mixed>
      */
-    private function getDataForEntity(MediaInterface&MediaTranslationsAwareInterface $entity, ?string $locale): array
+    private function getDataForEntity(MediaInterface&MediaTranslationsAwareInterface&AdditionalDataAwareInterface $entity, ?string $locale): array
     {
-        $translations = [];
+        $seoFilename = '';
+        $localized = [];
         foreach ($entity->getMediaTranslations() as $translation) {
-            $translations[$translation->getLocale()] = [
-                'title' => $translation->getTitle(),
-                'description' => $translation->getDescription(),
-                'seoFilename' => $translation->getSeoFilename(),
-            ];
+            if ($translation->getLocale() === $locale) {
+                $seoFilename = $translation->getSeoFilename() ?? '';
+                $localized = $translation->getAdditionalData();
+
+                break;
+            }
         }
 
         $data = [
             'id' => $entity->getId(),
-            'title' => $translations[$locale]['title'] ?? '',
-            'description' => $translations[$locale]['description'] ?? '',
-            'seoFilename' => $translations[$locale]['seoFilename'] ?? '',
+            'seoFilename' => $seoFilename,
         ];
 
-        if ($entity instanceof MediaAdditionalDataInterface) {
-            $data['verifyDownload'] = $entity->getVerifyDownload();
-            $data['aiGenerated'] = $entity->isAiGenerated();
+        foreach ($this->localizedKeys as $key) {
+            $data[$key] = $localized[$key] ?? null;
+        }
+
+        $unlocalized = $entity->getAdditionalData();
+        foreach ($this->unlocalizedKeys as $key) {
+            $data[$key] = $unlocalized[$key] ?? null;
         }
 
         return $data;
@@ -76,26 +86,33 @@ class MediaAdditionalDataController implements SecuredControllerInterface
     /**
      * @param array<string, mixed> $data
      */
-    private function mapDataToEntity(array $data, MediaInterface&MediaTranslationsAwareInterface $entity, ?string $locale): void
+    private function mapDataToEntity(array $data, MediaInterface&MediaTranslationsAwareInterface&AdditionalDataAwareInterface $entity, ?string $locale): void
     {
-        $entity->setMediaTranslation([
-            'title' => $data['title'] ?? null,
-            'description' => $data['description'] ?? null,
-            'seoFilename' => $data['seoFilename'] ?? null,
-        ], $locale);
-
-        if ($entity instanceof MediaAdditionalDataInterface) {
-            $entity->setVerifyDownload($data['verifyDownload'] ?? null);
-            $entity->setAiGenerated($data['aiGenerated'] ?? null);
+        $localized = [];
+        foreach ($this->localizedKeys as $key) {
+            if (\array_key_exists($key, $data)) {
+                $localized[$key] = $data[$key];
+            }
         }
+
+        $unlocalized = $entity->getAdditionalData();
+        foreach ($this->unlocalizedKeys as $key) {
+            if (\array_key_exists($key, $data)) {
+                $unlocalized[$key] = $data[$key];
+            }
+        }
+        $entity->setAdditionalData($unlocalized);
+
+        $seoFilename = \is_string($data['seoFilename'] ?? null) ? $data['seoFilename'] : null;
+        $entity->setMediaTranslation($seoFilename, $localized, $locale);
     }
 
-    private function findMediaOrFail(int $id): MediaInterface&MediaTranslationsAwareInterface
+    private function findMediaOrFail(int $id): MediaInterface&MediaTranslationsAwareInterface&AdditionalDataAwareInterface
     {
         $media = $this->entityManager->getRepository(MediaInterface::class)->find($id);
 
-        if (!$media instanceof MediaTranslationsAwareInterface) {
-            throw new NotFoundHttpException(\sprintf('Media with id "%d" not found or does not support translations.', $id));
+        if (!$media instanceof MediaTranslationsAwareInterface || !$media instanceof AdditionalDataAwareInterface) {
+            throw new NotFoundHttpException(\sprintf('Media with id "%d" not found or does not support additional data.', $id));
         }
 
         return $media;

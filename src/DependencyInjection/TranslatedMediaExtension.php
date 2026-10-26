@@ -39,6 +39,16 @@ class TranslatedMediaExtension extends Extension implements PrependExtensionInte
             'objects' => ['media' => ['model' => $mediaClass]],
         ]);
 
+        // Self-register the bundle's migrations path so hosts don't have to edit
+        // doctrine_migrations.yaml (mirrors how Sulu's own bundles register theirs).
+        if ($container->hasExtension('doctrine_migrations')) {
+            $container->prependExtensionConfig('doctrine_migrations', [
+                'migrations_paths' => [
+                    'Alengo\\SuluTranslatedMediaBundle\\Migrations' => \dirname(__DIR__, 2) . '/migrations',
+                ],
+            ]);
+        }
+
         // Register bundle's forms directory (project's directory is added later and overrides)
         $container->prependExtensionConfig('sulu_admin', [
             'forms' => [
@@ -60,7 +70,9 @@ class TranslatedMediaExtension extends Extension implements PrependExtensionInte
         $config = $this->processConfiguration($configuration, $configs);
 
         $container->setParameter('alengo_translated_media.media_class', $config['media_class']);
-        $container->setParameter('alengo_translated_media.admin.form_key', $config['admin']['form_key']);
+        $container->setParameter('alengo_translated_media.form_key', $config['form_key']);
+        $container->setParameter('alengo_translated_media.unlocalized_keys', \array_values($config['unlocalized_keys']));
+        $container->setParameter('alengo_translated_media.localized_keys', \array_values($config['localized_keys']));
         $container->setParameter('alengo_translated_media.admin.resource_key', $config['admin']['resource_key']);
         $container->setParameter('alengo_translated_media.admin.tab_title', $config['admin']['tab_title']);
         $container->setParameter(
@@ -86,7 +98,7 @@ class TranslatedMediaExtension extends Extension implements PrependExtensionInte
         // Admin tab
         $adminDef = new Definition(MediaAdmin::class);
         $adminDef->addArgument(new Reference('sulu_admin.view_builder_factory'));
-        $adminDef->addArgument($config['admin']['form_key']);
+        $adminDef->addArgument($config['form_key']);
         $adminDef->addArgument($config['admin']['resource_key']);
         $adminDef->addArgument($config['admin']['tab_title']);
         $adminDef->addTag('sulu.admin');
@@ -96,6 +108,8 @@ class TranslatedMediaExtension extends Extension implements PrependExtensionInte
         // Controller
         $controllerDef = new Definition(MediaAdditionalDataController::class);
         $controllerDef->addArgument(new Reference('doctrine.orm.entity_manager'));
+        $controllerDef->addArgument(\array_values($config['unlocalized_keys']));
+        $controllerDef->addArgument(\array_values($config['localized_keys']));
         $controllerDef->addArgument(new Reference('sulu_http_cache.cache_manager', ContainerBuilder::NULL_ON_INVALID_REFERENCE));
         $controllerDef->setPublic(true);
         $container->setDefinition(MediaAdditionalDataController::class, $controllerDef);

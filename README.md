@@ -2,11 +2,12 @@
 
 SEO-friendly translated media filenames for [Sulu CMS](https://sulu.io/) 3.x.
 
-Serves media files under locale-specific SEO filenames (e.g. `/uploads/red-shoes-de.jpg`) while keeping the original file stored under its original name. Includes an "Additional Data" admin tab with locale-aware title, description, and SEO filename fields — plus optional boolean flags (`verifyDownload`, `aiGenerated`).
+Serves media files under locale-specific SEO filenames (e.g. `/uploads/red-shoes-de.jpg`) while keeping the original file stored under its original name. Includes a configurable "Additional Data" admin tab: a Sulu form defines the fields, and bundle config routes each field to per-media (unlocalized) or per-locale (localized) JSON storage. The per-locale `seoFilename` stays a dedicated, queryable field.
 
 ## Features
 
-- **Translated filenames** — per-locale `seoFilename`, `title`, `description` in `me_media_translations`
+- **Translated filenames** — dedicated per-locale `seoFilename` in `me_media_translations`
+- **Configurable additional data** — a Sulu form plus `localized_keys` / `unlocalized_keys` config routes each field to per-locale or per-media JSON storage
 - **Built-in Media entity** — ready-to-use `Media` entity extending Sulu's base; no project entity required
 - **TranslatedFormatManager** — replaces Sulu's default FormatManager via compiler pass
 - **Twig functions** — `sulu_translated_media_url()` / `sulu_translated_media_urls()` with WebP support
@@ -47,7 +48,40 @@ Run a database migration or schema update to create the `me_media_translations` 
 bin/adminconsole doctrine:schema:update --force
 ```
 
+The bundle also ships Doctrine migrations under `migrations/` (e.g. the move to the
+flexible `additional_data` columns). Their path is **auto-registered** with
+`doctrine_migrations` (like Sulu's own bundles), so they show up without any host
+config:
+
+```bash
+bin/adminconsole doctrine:migrations:list      # includes Alengo\SuluTranslatedMediaBundle\Migrations\…
+bin/adminconsole doctrine:migrations:migrate
+```
+
+> Use the migration (not `doctrine:schema:update`) on installs that hold data: it
+> preserves it — carrying `ai_generated` into Sulu's `me_file_versions.origin` and
+> packing `title`/`description`/`verify_download` into the new JSON columns.
+
 That's it — no further configuration required.
+
+## Additional data (configurable)
+
+The "Additional Data" admin tab is driven by a Sulu form (`form_key`) plus two lists that route each submitted field to its storage:
+
+- `localized_keys` — stored per locale in `me_media_translations.additional_data`
+- `unlocalized_keys` — stored once per media in `me_media.additional_data`
+
+```yaml
+# config/packages/alengo_translated_media.yaml
+alengo_translated_media:
+    form_key: media_additional_data        # the Sulu form defining the fields
+    localized_keys: []                     # default (none); e.g. [title, description]
+    unlocalized_keys: []                   # default (none); e.g. [verify_download, information]
+```
+
+`seoFilename` is always a dedicated per-locale column (the URL builder and cache warmer query it), independent of these lists. The bundle's default form ships **only** `seoFilename`; projects add their own fields by shipping a form with the same `form_key` (Sulu merges forms by section) and listing each field's key under `localized_keys` or `unlocalized_keys`.
+
+> **AI origin:** the former `aiGenerated` flag is gone — Sulu 3.1 provides a native `origin` field on `FileVersion` (values such as `ai_generated`). Set it via Sulu's own media form; the bundle no longer manages it.
 
 ## Twig Usage
 
@@ -101,8 +135,8 @@ alengo_translated_media:
 |---|---|
 | `Entity\Media` | Concrete Doctrine entity (`me_media`) — use directly or extend |
 | `Entity\MediaTranslations` | Locale rows in `me_media_translations` |
-| `Model\MediaTranslationsAwareInterface` + `MediaTranslationsTrait` | Locale fields: `title`, `description`, `seoFilename` |
-| `Model\MediaAdditionalDataInterface` + `MediaAdditionalDataTrait` | Boolean flags: `verifyDownload`, `aiGenerated` |
+| `Model\MediaTranslationsAwareInterface` + `MediaTranslationsTrait` | Per-locale rows: dedicated `seoFilename` + flexible `additionalData` |
+| `Model\AdditionalDataAwareInterface` + `AdditionalDataTrait` | Flexible `additionalData` JSON — unlocalized on `Media`, localized on `MediaTranslations` |
 
 ## Commands
 

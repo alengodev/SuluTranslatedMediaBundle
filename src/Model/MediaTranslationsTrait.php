@@ -31,15 +31,14 @@ trait MediaTranslationsTrait
     }
 
     /**
-     * @param array{title?: string|null, description?: string|null, seoFilename?: string|null}|null $data
+     * @param array<string, mixed> $additionalData
      */
-    public function setMediaTranslation(?array $data, ?string $locale): void
+    public function setMediaTranslation(?string $seoFilename, array $additionalData, ?string $locale): void
     {
         foreach ($this->mediaTranslations as $translation) {
             if ($translation->getLocale() === $locale) {
-                $translation->setTitle($data['title'] ?? null);
-                $translation->setDescription($data['description'] ?? null);
-                $translation->setSeoFilename($data['seoFilename'] ?? null);
+                $translation->setSeoFilename($seoFilename);
+                $translation->setAdditionalData($additionalData);
 
                 return;
             }
@@ -47,9 +46,8 @@ trait MediaTranslationsTrait
 
         $translation = new MediaTranslations();
         $translation->setLocale($locale);
-        $translation->setTitle($data['title'] ?? null);
-        $translation->setDescription($data['description'] ?? null);
-        $translation->setSeoFilename($data['seoFilename'] ?? null);
+        $translation->setSeoFilename($seoFilename);
+        $translation->setAdditionalData($additionalData);
         $translation->setMedia($this);
 
         $this->mediaTranslations->add($translation);
