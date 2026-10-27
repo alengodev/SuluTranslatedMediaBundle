@@ -35,6 +35,24 @@ final class Version20261026120000 extends AbstractMigration
             'This migration can only be run on MySQL/MariaDB.',
         );
 
+        // Measure the carry-over up front, while the legacy columns still exist.
+        $aiCount = (int) $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM me_file_versions fv'
+            . ' INNER JOIN me_files f ON fv.idFiles = f.id'
+            . ' INNER JOIN me_media m ON f.idMedia = m.id'
+            . ' WHERE m.ai_generated = 1',
+        );
+        $verifyCount = (int) $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM me_media WHERE verify_download IS NOT NULL',
+        );
+        $translationCount = (int) $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM me_media_translations WHERE title IS NOT NULL OR description IS NOT NULL',
+        );
+
+        $this->write(\sprintf('     -> carrying ai_generated into FileVersion.origin for %d file version(s)', $aiCount));
+        $this->write(\sprintf('     -> packing verify_download into me_media.additional_data for %d media', $verifyCount));
+        $this->write(\sprintf('     -> packing title/description into me_media_translations.additional_data for %d translation(s)', $translationCount));
+
         $this->addSql('ALTER TABLE me_media ADD additional_data JSON DEFAULT NULL');
         $this->addSql('ALTER TABLE me_media_translations ADD additional_data JSON DEFAULT NULL');
 
