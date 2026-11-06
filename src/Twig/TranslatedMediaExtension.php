@@ -10,6 +10,7 @@ use Sulu\Bundle\HttpCacheBundle\ReferenceStore\ReferenceStoreInterface;
 use Sulu\Bundle\MediaBundle\Api\Media as ApiMedia;
 use Sulu\Bundle\MediaBundle\Media\FormatCache\FormatCacheInterface;
 use Symfony\Component\String\Slugger\SluggerInterface;
+use Symfony\Contracts\Service\ResetInterface;
 use Twig\Extension\AbstractExtension;
 use Twig\TwigFunction;
 
@@ -26,9 +27,9 @@ use Twig\TwigFunction;
  *   {{ urls.default }}
  *   {{ urls.webp }}
  */
-class TranslatedMediaExtension extends AbstractExtension
+class TranslatedMediaExtension extends AbstractExtension implements ResetInterface
 {
-    /** @var array<string, string|null> Request-scoped cache of the resolved SEO base filename, keyed by "id:locale". */
+    /** @var array<string, string|null> Request-scoped cache of the resolved SEO base filename, keyed by "id:locale" (cleared via reset()). */
     private array $seoFilenameCache = [];
 
     /**
@@ -196,6 +197,11 @@ class TranslatedMediaExtension extends AbstractExtension
     /**
      * Resolves the slugged SEO filename (without extension) for a media id in a
      * given locale, or null if the media has no SEO filename for that locale.
+     *
+     * Deliberately reads the entity's translation collection instead of querying:
+     * when a page loads its media, the translations are already batch-loaded
+     * (WHERE media_id IN (…)), so this costs no query at all. A separate batched
+     * query was measured to add one query per page.
      */
     private function resolveSeoFilename(int $id, string $locale): ?string
     {
@@ -211,5 +217,14 @@ class TranslatedMediaExtension extends AbstractExtension
         }
 
         return null;
+    }
+
+    /**
+     * Clears the per-request cache between requests/messages of long-running
+     * processes (workers), so changed SEO filenames are picked up and memory stays flat.
+     */
+    public function reset(): void
+    {
+        $this->seoFilenameCache = [];
     }
 }

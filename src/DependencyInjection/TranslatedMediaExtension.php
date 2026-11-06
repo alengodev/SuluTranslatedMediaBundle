@@ -94,6 +94,7 @@ class TranslatedMediaExtension extends Extension implements PrependExtensionInte
         $twigDef->addArgument(new Reference('sulu_http_cache.reference_store', ContainerBuilder::NULL_ON_INVALID_REFERENCE));
         $twigDef->addArgument(['webp' => 'image/webp']);
         $twigDef->addTag('twig.extension');
+        $twigDef->addTag('kernel.reset', ['method' => 'reset']);
         $container->setDefinition(TwigExtension::class, $twigDef);
 
         // Admin tab
