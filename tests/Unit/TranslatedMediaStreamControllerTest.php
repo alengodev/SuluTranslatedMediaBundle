@@ -10,6 +10,9 @@ use Sulu\Bundle\MediaBundle\Entity\File;
 use Sulu\Bundle\MediaBundle\Entity\FileVersion;
 use Sulu\Bundle\MediaBundle\Media\Manager\MediaManagerInterface;
 use Sulu\Bundle\MediaBundle\Media\Storage\StorageInterface;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -20,32 +23,29 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  *
  * TranslatedMediaStreamController streams remote files through the app with the disposition headers a
  * local download gets, making "Download master file" behave the same regardless of storage backend.
+ * By default ("admin") this applies only to the admin download route: website URLs keep the redirect
+ * to the CDN (Range requests for videos, no transfer through the app).
  * Local storage is simply delegated to the parent (a one-line else branch) and needs no test here.
  */
 final class TranslatedMediaStreamControllerTest extends TestCase
 {
+    private const ADMIN_ROUTE = 'sulu_media.website.media.download_admin';
+    private const WEBSITE_ROUTE = 'sulu_media.website.media.download';
+    private const CDN_URL = 'https://cdn.example.com/original.jpg';
+
     public function testRemoteStorageIsStreamedAsAttachmentInsteadOfRedirected(): void
     {
         $bytes = 'REMOTE-MASTER-FILE-BYTES';
 
-        $stream = \fopen('php://temp', 'r+');
-        self::assertIsResource($stream);
-        \fwrite($stream, $bytes);
-        \rewind($stream);
-
-        $storageOptions = ['fileName' => 'original.jpg'];
-
-        $storage = $this->createMock(StorageInterface::class);
-        $storage->method('getType')->willReturn(StorageInterface::TYPE_REMOTE);
-        $storage->method('load')->willReturn($stream);
+        $storage = $this->remoteStorage($bytes);
         // Remote files are streamed through the app, not redirected to the CDN path.
         $storage->expects(self::never())->method('getPath');
 
-        $controller = $this->controller($storage);
+        $controller = $this->controller($storage, null, self::ADMIN_ROUTE);
 
         $response = $this->invokeGetFileResponse(
             $controller,
-            $this->fileVersion($storageOptions, \strlen($bytes)),
+            $this->fileVersion(['fileName' => 'original.jpg'], \strlen($bytes)),
             ResponseHeaderBag::DISPOSITION_ATTACHMENT,
         );
 
@@ -61,6 +61,84 @@ final class TranslatedMediaStreamControllerTest extends TestCase
         $sent = (string) \ob_get_clean();
 
         self::assertSame($bytes, $sent);
+    }
+
+    public function testWebsiteRouteKeepsRedirectToStorageByDefault(): void
+    {
+        $storage = $this->remoteStorage('BYTES');
+        $storage->expects(self::never())->method('load');
+
+        $response = $this->invokeGetFileResponse(
+            $this->controller($storage, null, self::WEBSITE_ROUTE),
+            $this->fileVersion(['fileName' => 'original.jpg'], 5),
+            ResponseHeaderBag::DISPOSITION_ATTACHMENT,
+        );
+
+        self::assertInstanceOf(RedirectResponse::class, $response);
+        self::assertSame(self::CDN_URL, $response->getTargetUrl());
+        self::assertSame(302, $response->getStatusCode());
+    }
+
+    public function testWithoutCurrentRequestDefaultModeRedirects(): void
+    {
+        $storage = $this->remoteStorage('BYTES');
+
+        $response = $this->invokeGetFileResponse(
+            $this->controller($storage, null, null),
+            $this->fileVersion(['fileName' => 'original.jpg'], 5),
+            ResponseHeaderBag::DISPOSITION_ATTACHMENT,
+        );
+
+        self::assertInstanceOf(RedirectResponse::class, $response);
+    }
+
+    public function testModeAllStreamsWebsiteRouteToo(): void
+    {
+        $response = $this->invokeGetFileResponse(
+            $this->controller($this->remoteStorage('BYTES'), TranslatedMediaStreamController::STREAM_REMOTE_ALL, self::WEBSITE_ROUTE),
+            $this->fileVersion(['fileName' => 'original.jpg'], 5),
+            ResponseHeaderBag::DISPOSITION_ATTACHMENT,
+        );
+
+        self::assertInstanceOf(StreamedResponse::class, $response);
+    }
+
+    public function testModeNoneRedirectsAdminRouteToo(): void
+    {
+        $response = $this->invokeGetFileResponse(
+            $this->controller($this->remoteStorage('BYTES'), TranslatedMediaStreamController::STREAM_REMOTE_NONE, self::ADMIN_ROUTE),
+            $this->fileVersion(['fileName' => 'original.jpg'], 5),
+            ResponseHeaderBag::DISPOSITION_ATTACHMENT,
+        );
+
+        self::assertInstanceOf(RedirectResponse::class, $response);
+    }
+
+    public function testInvalidStreamRemoteValueIsRejected(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->controller($this->remoteStorage('BYTES'), 'sometimes', null);
+    }
+
+    /**
+     * Remote storage mock: load() returns the bytes as a stream, getPath() the CDN URL used by Sulu's redirect.
+     *
+     * @return StorageInterface&\PHPUnit\Framework\MockObject\MockObject
+     */
+    private function remoteStorage(string $bytes): StorageInterface
+    {
+        $stream = \fopen('php://temp', 'r+');
+        self::assertIsResource($stream);
+        \fwrite($stream, $bytes);
+        \rewind($stream);
+
+        $storage = $this->createMock(StorageInterface::class);
+        $storage->method('getType')->willReturn(StorageInterface::TYPE_REMOTE);
+        $storage->method('load')->willReturn($stream);
+        $storage->method('getPath')->willReturn(self::CDN_URL);
+
+        return $storage;
     }
 
     /**
@@ -87,16 +165,31 @@ final class TranslatedMediaStreamControllerTest extends TestCase
 
     /**
      * Instantiate without the parent constructor and inject only the properties getFileResponse's remote
-     * branch uses. The constructor's path-cleanup parameter is typed against a Sulu interface whose
-     * namespace differs between versions, and the remote streaming path no longer depends on it.
+     * branches use. The constructor's path-cleanup parameter is typed against a Sulu interface whose
+     * namespace differs between versions, and the remote paths do not depend on it.
+     *
+     * @param string|null $streamRemote null keeps the default ("admin")
+     * @param string|null $route        _route of the current request; null = no current request
      */
-    private function controller(StorageInterface $storage): TranslatedMediaStreamController
+    private function controller(StorageInterface $storage, ?string $streamRemote, ?string $route): TranslatedMediaStreamController
     {
         /** @var TranslatedMediaStreamController $controller */
         $controller = (new \ReflectionClass(TranslatedMediaStreamController::class))->newInstanceWithoutConstructor();
 
         $this->setProperty($controller, 'storage', $storage);
         $this->setProperty($controller, 'mediaManager', $this->createMock(MediaManagerInterface::class));
+
+        if (null !== $streamRemote) {
+            $controller->setStreamRemote($streamRemote);
+        }
+
+        $requestStack = new RequestStack();
+        if (null !== $route) {
+            $request = Request::create('/media/1/download/original.jpg');
+            $request->attributes->set('_route', $route);
+            $requestStack->push($request);
+        }
+        $controller->setRequestStack($requestStack);
 
         return $controller;
     }

@@ -81,6 +81,8 @@ class TranslatedMediaExtension extends Extension implements PrependExtensionInte
             $config['progressive_formats']['enabled'] ? \array_values($config['progressive_formats']['chain']) : [],
         );
         $container->setParameter('alengo_translated_media.progressive_formats.fallback_max_age', $config['progressive_formats']['fallback_max_age']);
+        // Read by TranslatedMediaStreamControllerPass
+        $container->setParameter('alengo_translated_media.master_file_download.stream_remote', $config['master_file_download']['stream_remote']);
 
         // FormatCacheInterface autowiring alias
         $container->setAlias(FormatCacheInterface::class, new Alias('sulu_media.format_cache', true));

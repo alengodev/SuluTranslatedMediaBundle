@@ -15,7 +15,7 @@ Serves media files under locale-specific SEO filenames (e.g. `/uploads/red-shoes
 - **Progressive formats** (opt-in) — on-demand requests generate one rendition step at a time (jpg/png → webp → avif) instead of the expensive format right away
 - **Admin tab** — "Additional Data" tab auto-registered in the Sulu Media admin
 - **Collection section** — the media details form shows the media's collection as a folder tile (links to its media overview) with its clickable path, below "License"
-- **Consistent master-file download** — "Download master file" streams remote (S3/CDN) files through the app as an attachment, so they download instead of opening inline in a new window (matching local storage); replaces Sulu's `MediaStreamController` via compiler pass
+- **Consistent master-file download** — "Download master file" in the admin streams remote (S3/CDN) files through the app as an attachment, so they download instead of opening inline in a new window (matching local storage); website media URLs keep redirecting to the CDN (configurable, see [Master-file download](#master-file-download)); replaces Sulu's `MediaStreamController` via compiler pass
 - **Zero-config** — `sulu_media.objects.media.model` and `sulu_admin` resources are auto-configured
 
 ## Requirements
@@ -151,6 +151,27 @@ alengo_translated_media:
 
 > A CDN in front of `/uploads/media` must respect the origin `Cache-Control`, otherwise an intermediate
 > rendition stays cached at the edge.
+
+## Master-file download
+
+With remote storage (S3/CDN) Sulu answers `/media/{id}/download/{slug}` with a `302` redirect to the
+storage URL. For "Download master file" in the admin this drops the `Content-Disposition`, so the file
+opens inline in a new window. The bundle streams those downloads through the app as an attachment instead.
+
+By default this applies **only to the admin download route** (`sulu_media.website.media.download_admin`,
+`/admin/media/{id}/download/{slug}`). Website URLs keep Sulu's redirect to the CDN, which serves Range
+requests (`206`, needed by Safari/iOS for `<video>`) and keeps large transfers off the application.
+
+```yaml
+# config/packages/alengo_translated_media.yaml
+alengo_translated_media:
+    master_file_download:
+        stream_remote: admin   # default — admin download only
+        # stream_remote: all   # every download route (no Range support, transfer through the app)
+        # stream_remote: none  # Sulu default everywhere (Sulu's MediaStreamController is not replaced)
+```
+
+Local storage is not affected by this setting (Sulu streams local files itself).
 
 ## Provided Models
 
