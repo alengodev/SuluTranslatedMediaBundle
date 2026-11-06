@@ -115,7 +115,7 @@ final class TranslatedMediaStreamControllerTest extends TestCase
         $fileVersion->method('getMimeType')->willReturn('image/jpeg');
         $fileVersion->method('getExtension')->willReturn('jpg');
         $fileVersion->method('getSize')->willReturn(\strlen('REMOTE-MASTER-FILE-BYTES'));
-        $fileVersion->method('getCreated')->willReturn(new \DateTime('2020-01-01 00:00:00'));
+        $fileVersion->method('getCreated')->willReturn(new \DateTimeImmutable('2020-01-01 00:00:00'));
         $fileVersion->method('getVersion')->willReturn(1);
         $fileVersion->method('getFile')->willReturn($file);
 
