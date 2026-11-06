@@ -1,0 +1,21 @@
+<?xml version="1.0" ?>
+<!-- Merged by Sulu into the core media_details form (same key): adds a read-only collection path (field type registered in assets/admin). -->
+<form xmlns="http://schemas.sulu.io/template/template"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://schemas.sulu.io/template/template http://schemas.sulu.io/template/form-1.0.xsd"
+>
+    <key>media_details</key>
+
+    <properties>
+        <section name="media_collection" colspan="12">
+            <properties>
+                <property name="collection" type="media_collection_path" onInvalid="ignore">
+                    <meta>
+                        <title lang="en">Collection</title>
+                        <title lang="de">Ordner</title>
+                    </meta>
+                </property>
+            </properties>
+        </section>
+    </properties>
+</form>

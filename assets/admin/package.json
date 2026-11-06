@@ -1,0 +1,13 @@
+{
+    "name": "sulu-translated-media-bundle",
+    "version": "1.0.0",
+    "private": true,
+    "license": "MIT",
+    "main": "index.js",
+    "peerDependencies": {
+        "mobx": "^4.0",
+        "mobx-react": "^5.0",
+        "react": "^17.0",
+        "sulu-admin-bundle": "*"
+    }
+}
