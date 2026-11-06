@@ -11,7 +11,8 @@ use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\SectionMetadata;
 /**
  * Moves the bundle's collection section (merged into the root of Sulu's
  * media_details form, see Resources/config/forms/media_details.xml) into
- * Sulu's own "media_details" section, right after its "license" section.
+ * Sulu's own "media_details" section, right after its "taxonomies" section
+ * (Categories/Tags), so the Collection block renders below Taxonomies.
  *
  * An XML form merge can only append to the form root; placing a section inside
  * a core section needs this visitor. If the core structure ever changes, the
@@ -21,7 +22,7 @@ final class MediaCollectionFormMetadataVisitor implements FormMetadataVisitorInt
 {
     private const FORM_KEY = 'media_details';
     private const TARGET_SECTION = 'media_details';
-    private const ANCHOR_ITEM = 'license';
+    private const ANCHOR_ITEM = 'taxonomies';
     private const COLLECTION_SECTION = 'media_collection';
 
     public function visitFormMetadata(FormMetadata $formMetadata, string $locale, array $metadataOptions = []): void

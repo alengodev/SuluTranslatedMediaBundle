@@ -1,7 +1,7 @@
 <?xml version="1.0" ?>
 <!--
     Merged by Sulu into the core media_details form (same key). The section is moved
-    below the "license" section by Admin\FormMetadata\MediaCollectionFormMetadataVisitor.
+    below the "taxonomies" section by Admin\FormMetadata\MediaCollectionFormMetadataVisitor.
     The field type media_collection_path is registered in assets/admin.
 -->
 <form xmlns="http://schemas.sulu.io/template/template"
