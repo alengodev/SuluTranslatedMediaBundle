@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Alengo\SuluTranslatedMediaBundle\DependencyInjection;
 
+use Alengo\SuluTranslatedMediaBundle\Admin\FormMetadata\MediaCollectionFormMetadataVisitor;
 use Alengo\SuluTranslatedMediaBundle\Admin\MediaAdmin;
 use Alengo\SuluTranslatedMediaBundle\Command\WarmMediaFormatCacheCommand;
 use Alengo\SuluTranslatedMediaBundle\Controller\Admin\MediaAdditionalDataController;
@@ -104,6 +105,11 @@ class TranslatedMediaExtension extends Extension implements PrependExtensionInte
         $adminDef->addTag('sulu.admin');
         $adminDef->addTag('sulu.context', ['context' => 'admin']);
         $container->setDefinition(MediaAdmin::class, $adminDef);
+
+        // Places the collection section (media details form) below "license"
+        $collectionVisitorDef = new Definition(MediaCollectionFormMetadataVisitor::class);
+        $collectionVisitorDef->addTag('sulu_admin.form_metadata_visitor');
+        $container->setDefinition(MediaCollectionFormMetadataVisitor::class, $collectionVisitorDef);
 
         // Controller
         $controllerDef = new Definition(MediaAdditionalDataController::class);

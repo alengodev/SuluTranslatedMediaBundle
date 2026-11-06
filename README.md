@@ -14,7 +14,7 @@ Serves media files under locale-specific SEO filenames (e.g. `/uploads/red-shoes
 - **Format cache warming** — pre-generates the format cache (jpg/webp/avif, x1 & x2) for all image media under their translated filenames
 - **Progressive formats** (opt-in) — on-demand requests generate one rendition step at a time (jpg/png → webp → avif) instead of the expensive format right away
 - **Admin tab** — "Additional Data" tab auto-registered in the Sulu Media admin
-- **Collection path** — the media details form shows the media's collection as a clickable path (links to the media overview of each collection)
+- **Collection section** — the media details form shows the media's collection as a folder tile (links to its media overview) with its clickable path, below "License"
 - **Zero-config** — `sulu_media.objects.media.model` and `sulu_admin` resources are auto-configured
 
 ## Requirements
@@ -79,7 +79,8 @@ import 'sulu-translated-media-bundle';
 Then rebuild the admin (`cd assets/admin && npm install && npm run build`).
 
 > The bundle merges a `media_collection` section into Sulu's `media_details` form
-> (same form key, see `src/Resources/config/forms/media_details.xml`). Its field type
+> (same form key, see `src/Resources/config/forms/media_details.xml`);
+> `Admin\FormMetadata\MediaCollectionFormMetadataVisitor` moves it below the "License" section. Its field type
 > `media_collection_path` only exists once the admin JS is registered and built —
 > until then the field is silently skipped (`onInvalid="ignore"`).
 
