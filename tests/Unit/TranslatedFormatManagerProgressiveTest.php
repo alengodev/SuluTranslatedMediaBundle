@@ -128,9 +128,26 @@ final class TranslatedFormatManagerProgressiveTest extends TestCase
     }
 
     /**
+     * The Content-Type must come from the generated output extension, not from sniffing the bytes:
+     * this is both cheaper (no per-request libmagic scan) and correct for avif/webp, which older
+     * libmagic builds misdetect. The converter here returns bytes with no valid image signature.
+     */
+    public function testContentTypeDerivedFromExtensionNotMagicBytes(): void
+    {
+        $this->touch('photo.jpg');
+        $this->touch('photo.webp');
+
+        $response = $this->manager(bytesOverride: 'not-a-real-image')->returnImage(self::MEDIA_ID, self::FORMAT, 'photo.avif');
+
+        self::assertSame(['avif'], $this->converted);
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame('image/avif', $response->headers->get('Content-Type'));
+    }
+
+    /**
      * @param list<string> $chain
      */
-    private function manager(array $chain = ['webp', 'avif'], string $mimeType = 'image/jpeg', bool $saveFails = false): TranslatedFormatManager
+    private function manager(array $chain = ['webp', 'avif'], string $mimeType = 'image/jpeg', bool $saveFails = false, ?string $bytesOverride = null): TranslatedFormatManager
     {
         $fileVersion = $this->createMock(FileVersion::class);
         $fileVersion->method('getVersion')->willReturn(1);
@@ -151,10 +168,10 @@ final class TranslatedFormatManagerProgressiveTest extends TestCase
         $converter->method('getSupportedOutputImageFormats')->willReturn(
             'image/png' === $mimeType ? ['png', 'jpg', 'gif', 'webp', 'avif'] : ['jpg', 'gif', 'png', 'webp', 'avif'],
         );
-        $converter->method('convert')->willReturnCallback(function (FileVersion $fv, string $format, string $extension): string {
+        $converter->method('convert')->willReturnCallback(function (FileVersion $fv, string $format, string $extension) use ($bytesOverride): string {
             $this->converted[] = $extension;
 
-            return self::BYTES[$extension];
+            return $bytesOverride ?? self::BYTES[$extension];
         });
 
         $formatCache = $this->createMock(FormatCacheInterface::class);

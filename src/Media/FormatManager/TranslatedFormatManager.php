@@ -46,6 +46,21 @@ use Symfony\Component\HttpFoundation\Response;
 class TranslatedFormatManager implements FormatManagerInterface
 {
     /**
+     * Content-Type for each output extension the converter can produce. The rendition's extension is known,
+     * so the mime type is deterministic — no per-request libmagic sniff, and avif/webp are labelled correctly
+     * even on hosts whose libmagic is too old to recognise them.
+     */
+    private const OUTPUT_MIME_TYPES = [
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'gif' => 'image/gif',
+        'webp' => 'image/webp',
+        'avif' => 'image/avif',
+        'svg' => 'image/svg+xml',
+    ];
+
+    /**
      * @param array<string, string>               $responseHeaders
      * @param array<string, ImageFormatDefinition> $formats
      * @param list<string>                         $progressiveChain deferred extensions in generation order; empty disables progressive formats
@@ -152,8 +167,7 @@ class TranslatedFormatManager implements FormatManagerInterface
 
             $setExpireHeaders = !$isIntermediate;
 
-            $finfo = new \finfo(\FILEINFO_MIME_TYPE);
-            $mimeType = $finfo->buffer($responseContent) ?: null;
+            $mimeType = $this->mimeTypeForExtension($imageFormat, $responseContent);
         } catch (ImageProxyException $e) {
             $this->logger?->debug($e->getMessage(), ['exception' => $e]);
             $responseContent = null;
@@ -359,6 +373,21 @@ class TranslatedFormatManager implements FormatManagerInterface
         }
 
         return $headers;
+    }
+
+    /**
+     * Resolves the response Content-Type from the generated output extension. Falls back to content sniffing
+     * only for an unexpected extension that is not in the known output map.
+     */
+    private function mimeTypeForExtension(string $extension, string $content): ?string
+    {
+        $extension = \strtolower($extension);
+
+        if (isset(self::OUTPUT_MIME_TYPES[$extension])) {
+            return self::OUTPUT_MIME_TYPES[$extension];
+        }
+
+        return (new \finfo(\FILEINFO_MIME_TYPE))->buffer($content) ?: null;
     }
 
     private function replaceExtension(string $filename, string $newExtension): string
