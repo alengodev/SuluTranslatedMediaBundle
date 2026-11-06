@@ -55,12 +55,11 @@ class TranslatedMediaStreamController extends MediaStreamController
             return parent::getFileResponse($fileVersion, $locale, $dispositionType);
         }
 
-        return $this->createStreamedFileResponse($fileVersion, $locale, $dispositionType);
+        return $this->createStreamedFileResponse($fileVersion, $dispositionType);
     }
 
     private function createStreamedFileResponse(
         FileVersion $fileVersion,
-        string $locale,
         string $dispositionType,
     ): StreamedResponse {
         $fileName = $fileVersion->getName();
@@ -97,7 +96,7 @@ class TranslatedMediaStreamController extends MediaStreamController
         $disposition = $response->headers->makeDisposition(
             $dispositionType,
             $fileName,
-            $this->cleanUpFileName($fileName, $locale, $fileVersion->getExtension()),
+            $this->asciiFallbackFileName($fileName, $fileVersion->getExtension()),
         );
 
         $file = $fileVersion->getFile();
@@ -122,12 +121,7 @@ class TranslatedMediaStreamController extends MediaStreamController
 
         $response->headers->set('Content-Type', !empty($mimeType) ? $mimeType : 'application/octet-stream');
         $response->headers->set('Content-Disposition', $disposition);
-
-        $fileSize = $fileVersion->getSize();
-        if (null !== $fileSize) {
-            $response->headers->set('Content-Length', (string) $fileSize);
-        }
-
+        $response->headers->set('Content-Length', (string) $fileVersion->getSize());
         $response->headers->set('Last-Modified', $fileVersion->getCreated()->format('D, d M Y H:i:s \G\M\T'));
         $response->headers->set('Content-Security-Policy', 'sandbox');
 
@@ -145,35 +139,28 @@ class TranslatedMediaStreamController extends MediaStreamController
         return \in_array($normalizedMimeType, self::DANGEROUS_INLINE_MIME_TYPES, true);
     }
 
-    private function cleanUpFileName(string $fileName, string $locale, ?string $extension): string
+    /**
+     * ASCII fallback filename for the Content-Disposition header (the `filename=` part). Modern
+     * browsers use the UTF-8 `filename*` part built from the real name, so this only needs to be a
+     * safe ASCII stand-in: Symfony requires it to contain no non-ASCII characters, "%", "/" or "\".
+     *
+     * Deliberately self-contained (no Sulu path-cleanup service) so the controller does not bind to
+     * Sulu-version-specific symbols; the service's interface and the property holding it were renamed
+     * across the supported Sulu range.
+     */
+    private function asciiFallbackFileName(string $fileName, ?string $extension): string
     {
-        $pathInfo = \pathinfo($fileName);
+        $baseName = \pathinfo($fileName, \PATHINFO_FILENAME);
+        $fallback = (string) \preg_replace('/[^A-Za-z0-9._-]/', '-', $baseName);
 
-        $cleanedFileName = $this->pathCleanupService()->cleanup($pathInfo['filename'], $locale);
-        if ($extension) {
-            $cleanedFileName .= '.' . $extension;
+        if ('' === $fallback) {
+            $fallback = 'download';
         }
 
-        return $cleanedFileName;
-    }
+        if ($extension) {
+            $fallback .= '.' . $extension;
+        }
 
-    /**
-     * Sulu renamed the MediaStreamController's path-cleanup property between versions
-     * (pathCleaner -> pathCleanup); read whichever one exists via reflection so the bundle
-     * works across the supported Sulu range without binding to one Sulu version's symbols.
-     *
-     * The real Sulu service does not implement the local PathCleanupContract shim, so the
-     * return type stays `object` and the contract is applied by phpdoc for static analysis only.
-     *
-     * @return PathCleanupContract
-     */
-    private function pathCleanupService(): object
-    {
-        $propertyName = \property_exists($this, 'pathCleanup') ? 'pathCleanup' : 'pathCleaner';
-
-        /** @var PathCleanupContract $service */
-        $service = (new \ReflectionProperty(MediaStreamController::class, $propertyName))->getValue($this);
-
-        return $service;
+        return $fallback;
     }
 }

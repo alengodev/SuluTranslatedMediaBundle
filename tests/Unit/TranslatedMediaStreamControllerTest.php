@@ -8,13 +8,8 @@ use Alengo\SuluTranslatedMediaBundle\Controller\TranslatedMediaStreamController;
 use PHPUnit\Framework\TestCase;
 use Sulu\Bundle\MediaBundle\Entity\File;
 use Sulu\Bundle\MediaBundle\Entity\FileVersion;
-use Sulu\Bundle\MediaBundle\Media\DispositionType\DispositionTypeResolver;
-use Sulu\Bundle\MediaBundle\Media\FormatCache\FormatCacheInterface;
-use Sulu\Bundle\MediaBundle\Media\FormatManager\FormatManagerInterface;
 use Sulu\Bundle\MediaBundle\Media\Manager\MediaManagerInterface;
 use Sulu\Bundle\MediaBundle\Media\Storage\StorageInterface;
-use Sulu\Bundle\MediaBundle\Entity\MediaRepositoryInterface;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -23,8 +18,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * the storage/CDN URL, dropping the Content-Disposition header — so the browser renders the file inline
  * in a new window instead of downloading it, unlike local storage which streams it as an attachment.
  *
- * TranslatedMediaStreamController streams remote files through the app with the same disposition headers
- * local downloads get, making "Download master file" behave identically regardless of storage backend.
+ * TranslatedMediaStreamController streams remote files through the app with the disposition headers a
+ * local download gets, making "Download master file" behave the same regardless of storage backend.
+ * Local storage is simply delegated to the parent (a one-line else branch) and needs no test here.
  */
 final class TranslatedMediaStreamControllerTest extends TestCase
 {
@@ -40,22 +36,20 @@ final class TranslatedMediaStreamControllerTest extends TestCase
         $storageOptions = ['fileName' => 'original.jpg'];
 
         $storage = $this->createMock(StorageInterface::class);
-        $storage->method('getType')->with($storageOptions)->willReturn(StorageInterface::TYPE_REMOTE);
-        $storage->method('load')->with($storageOptions)->willReturn($stream);
+        $storage->method('getType')->willReturn(StorageInterface::TYPE_REMOTE);
+        $storage->method('load')->willReturn($stream);
+        // Remote files are streamed through the app, not redirected to the CDN path.
         $storage->expects(self::never())->method('getPath');
-
-        $fileVersion = $this->fileVersion($storageOptions);
 
         $controller = $this->controller($storage);
 
         $response = $this->invokeGetFileResponse(
             $controller,
-            $fileVersion,
-            'de',
+            $this->fileVersion($storageOptions, \strlen($bytes)),
             ResponseHeaderBag::DISPOSITION_ATTACHMENT,
         );
 
-        // StreamedResponse (through the app), never Sulu's bare RedirectResponse to the CDN.
+        // StreamedResponse through the app, never Sulu's bare RedirectResponse to the CDN.
         self::assertInstanceOf(StreamedResponse::class, $response);
         self::assertStringStartsWith('attachment', (string) $response->headers->get('Content-Disposition'));
         self::assertStringContainsString('original.jpg', (string) $response->headers->get('Content-Disposition'));
@@ -69,42 +63,10 @@ final class TranslatedMediaStreamControllerTest extends TestCase
         self::assertSame($bytes, $sent);
     }
 
-    public function testLocalStorageStillUsesTheParentBinaryResponse(): void
-    {
-        $tmpFile = \tempnam(\sys_get_temp_dir(), 'tms');
-        self::assertIsString($tmpFile);
-        \file_put_contents($tmpFile, 'LOCAL-BYTES');
-
-        try {
-            $storageOptions = ['fileName' => 'original.jpg'];
-
-            $storage = $this->createMock(StorageInterface::class);
-            $storage->method('getType')->with($storageOptions)->willReturn(StorageInterface::TYPE_LOCAL);
-            $storage->method('getPath')->with($storageOptions)->willReturn($tmpFile);
-            $storage->expects(self::never())->method('load');
-
-            $fileVersion = $this->fileVersion($storageOptions);
-
-            $controller = $this->controller($storage);
-
-            $response = $this->invokeGetFileResponse(
-                $controller,
-                $fileVersion,
-                'de',
-                ResponseHeaderBag::DISPOSITION_ATTACHMENT,
-            );
-
-            // Local storage keeps the parent's BinaryFileResponse, not our streamed response.
-            self::assertInstanceOf(BinaryFileResponse::class, $response);
-        } finally {
-            @\unlink($tmpFile);
-        }
-    }
-
     /**
      * @param array<string, string|null> $storageOptions
      */
-    private function fileVersion(array $storageOptions): FileVersion
+    private function fileVersion(array $storageOptions, int $size): FileVersion
     {
         $file = $this->createMock(File::class);
         $file->method('getVersion')->willReturn(1);
@@ -114,42 +76,48 @@ final class TranslatedMediaStreamControllerTest extends TestCase
         $fileVersion->method('getName')->willReturn('original.jpg');
         $fileVersion->method('getMimeType')->willReturn('image/jpeg');
         $fileVersion->method('getExtension')->willReturn('jpg');
-        $fileVersion->method('getSize')->willReturn(\strlen('REMOTE-MASTER-FILE-BYTES'));
+        $fileVersion->method('getSize')->willReturn($size);
         $fileVersion->method('getCreated')->willReturn(new \DateTimeImmutable('2020-01-01 00:00:00'));
+        // Same version as the file → no canonical-link lookup via the media manager.
         $fileVersion->method('getVersion')->willReturn(1);
         $fileVersion->method('getFile')->willReturn($file);
 
         return $fileVersion;
     }
 
+    /**
+     * Instantiate without the parent constructor and inject only the properties getFileResponse's remote
+     * branch uses. The constructor's path-cleanup parameter is typed against a Sulu interface whose
+     * namespace differs between versions, and the remote streaming path no longer depends on it.
+     */
     private function controller(StorageInterface $storage): TranslatedMediaStreamController
     {
-        $pathCleanup = $this->createMock(\Sulu\Component\PHPCR\PathCleanupInterface::class);
-        $pathCleanup->method('cleanup')->willReturnCallback(static fn (string $name): string => $name);
+        /** @var TranslatedMediaStreamController $controller */
+        $controller = (new \ReflectionClass(TranslatedMediaStreamController::class))->newInstanceWithoutConstructor();
 
-        return new TranslatedMediaStreamController(
-            $this->createMock(DispositionTypeResolver::class),
-            $this->createMock(MediaRepositoryInterface::class),
-            $pathCleanup,
-            $this->createMock(FormatManagerInterface::class),
-            $this->createMock(FormatCacheInterface::class),
-            $this->createMock(MediaManagerInterface::class),
-            $storage,
-            null,
-        );
+        $this->setProperty($controller, 'storage', $storage);
+        $this->setProperty($controller, 'mediaManager', $this->createMock(MediaManagerInterface::class));
+
+        return $controller;
+    }
+
+    private function setProperty(object $object, string $name, object $value): void
+    {
+        $property = new \ReflectionProperty($object, $name);
+        $property->setAccessible(true);
+        $property->setValue($object, $value);
     }
 
     private function invokeGetFileResponse(
         TranslatedMediaStreamController $controller,
         FileVersion $fileVersion,
-        string $locale,
         string $dispositionType,
     ): object {
         $method = new \ReflectionMethod($controller, 'getFileResponse');
         $method->setAccessible(true);
 
         /** @var object $response */
-        $response = $method->invoke($controller, $fileVersion, $locale, $dispositionType);
+        $response = $method->invoke($controller, $fileVersion, 'de', $dispositionType);
 
         return $response;
     }
