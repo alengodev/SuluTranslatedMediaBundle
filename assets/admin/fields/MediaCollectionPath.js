@@ -1,6 +1,6 @@
 // @flow
 import React from 'react';
-import {action, observable, reaction} from 'mobx';
+import {action, comparer, observable, reaction} from 'mobx';
 import {observer} from 'mobx-react';
 import {Button, Icon, Loader} from 'sulu-admin-bundle/components';
 import FolderList from 'sulu-admin-bundle/components/FolderList';
@@ -31,19 +31,25 @@ const arrowStyle = {fontSize: '10px', color: '#999'};
  */
 @observer
 class MediaCollectionPath extends React.Component<FieldTypeProps<?(number | string)>> {
-    @observable collection: ?Collection = undefined;
+    // Replaced as a whole, never mutated: no deep observable conversion needed
+    @observable.ref collection: ?Collection = undefined;
     @observable loading: boolean = true;
     disposer: ?() => void;
+    // Increments per request; responses of superseded requests are dropped
+    requestId: number = 0;
 
     componentDidMount() {
         this.disposer = reaction(
             () => [this.props.value, this.locale],
             ([collectionId, locale]) => this.load(collectionId, locale),
-            {fireImmediately: true}
+            // Structural compare: re-rendered props (e.g. after saving) with the same
+            // collection and locale must not trigger another request
+            {equals: comparer.structural, fireImmediately: true}
         );
     }
 
     componentWillUnmount() {
+        this.requestId++;
         if (this.disposer) {
             this.disposer();
         }
@@ -56,6 +62,8 @@ class MediaCollectionPath extends React.Component<FieldTypeProps<?(number | stri
     }
 
     @action load(collectionId: ?(number | string), locale: ?string) {
+        const requestId = ++this.requestId;
+
         if (!collectionId) {
             this.collection = undefined;
             this.loading = false;
@@ -66,6 +74,10 @@ class MediaCollectionPath extends React.Component<FieldTypeProps<?(number | stri
         this.loading = true;
         ResourceRequester.get(COLLECTIONS_RESOURCE_KEY, {id: collectionId, locale, breadcrumb: true})
             .then(action((data) => {
+                if (requestId !== this.requestId) {
+                    return;
+                }
+
                 const breadcrumb = (data._embedded && data._embedded.breadcrumb) || [];
                 this.collection = {
                     id: data.id,
@@ -80,6 +92,10 @@ class MediaCollectionPath extends React.Component<FieldTypeProps<?(number | stri
                 this.loading = false;
             }))
             .catch(action(() => {
+                if (requestId !== this.requestId) {
+                    return;
+                }
+
                 this.collection = undefined;
                 this.loading = false;
             }));
@@ -95,7 +111,8 @@ class MediaCollectionPath extends React.Component<FieldTypeProps<?(number | stri
     };
 
     render() {
-        if (this.loading) {
+        // Keep showing the previous collection while e.g. a locale switch reloads it
+        if (this.loading && !this.collection) {
             return <Loader size={20} />;
         }
 
