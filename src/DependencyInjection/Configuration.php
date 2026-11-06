@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Alengo\SuluTranslatedMediaBundle\DependencyInjection;
 
+use Alengo\SuluTranslatedMediaBundle\Controller\TranslatedMediaStreamController;
 use Alengo\SuluTranslatedMediaBundle\Entity\Media;
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
 use Symfony\Component\Config\Definition\ConfigurationInterface;
@@ -46,6 +47,20 @@ class Configuration implements ConfigurationInterface
                         ->scalarNode('tab_title')
                             ->defaultValue('sulu_admin.app.additional_data')
                             ->cannotBeEmpty()
+                        ->end()
+                    ->end()
+                ->end()
+                ->arrayNode('master_file_download')
+                    ->addDefaultsIfNotSet()
+                    ->children()
+                        ->enumNode('stream_remote')
+                            ->info('Which downloads of remote-stored (S3/CDN) files are streamed through the app as an attachment instead of redirected to the storage URL: "admin" = only "Download master file" in the admin (website URLs keep redirecting to the CDN), "all" = every download, "none" = Sulu default (always redirect)')
+                            ->values([
+                                TranslatedMediaStreamController::STREAM_REMOTE_ADMIN,
+                                TranslatedMediaStreamController::STREAM_REMOTE_ALL,
+                                TranslatedMediaStreamController::STREAM_REMOTE_NONE,
+                            ])
+                            ->defaultValue(TranslatedMediaStreamController::STREAM_REMOTE_ADMIN)
                         ->end()
                     ->end()
                 ->end()

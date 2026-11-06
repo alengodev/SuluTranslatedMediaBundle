@@ -7,6 +7,7 @@ namespace Alengo\SuluTranslatedMediaBundle\Controller;
 use Sulu\Bundle\MediaBundle\Controller\MediaStreamController;
 use Sulu\Bundle\MediaBundle\Entity\FileVersion;
 use Sulu\Bundle\MediaBundle\Media\Storage\StorageInterface;
+use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -23,9 +24,25 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * This controller streams remote master files through the app with the very same headers a
  * local download gets, honouring the disposition the parent already resolved, so the download
  * is consistent across storage backends. Local storage keeps using the parent's response.
+ *
+ * By default only the admin download route is streamed ("admin"): website URLs such as
+ * /media/{id}/download/video.mp4 keep Sulu's redirect to the CDN, which serves Range requests
+ * (206, required by Safari/iOS for <video>) and keeps the transfer off the application.
  */
 class TranslatedMediaStreamController extends MediaStreamController
 {
+    /** Stream remote files only on the admin route ("Download master file"). */
+    public const STREAM_REMOTE_ADMIN = 'admin';
+
+    /** Stream remote files on every download route. */
+    public const STREAM_REMOTE_ALL = 'all';
+
+    /** Never stream remote files (Sulu default: redirect to the storage URL). */
+    public const STREAM_REMOTE_NONE = 'none';
+
+    /** Sulu route of "Download master file" (path configurable via sulu_media.routing.media_download_path_admin). */
+    private const ADMIN_DOWNLOAD_ROUTE = 'sulu_media.website.media.download_admin';
+
     /**
      * MIME types a browser renders as a document on the application origin (stored XSS);
      * forced to "attachment" when they would otherwise be served inline. Mirrors Sulu core.
@@ -46,16 +63,49 @@ class TranslatedMediaStreamController extends MediaStreamController
      */
     private const STREAM_CHUNK_SIZE = 524288;
 
+    private string $streamRemote = self::STREAM_REMOTE_ADMIN;
+
+    private ?RequestStack $requestStack = null;
+
+    /**
+     * Set by TranslatedMediaStreamControllerPass (alengo_translated_media.master_file_download.stream_remote).
+     */
+    public function setStreamRemote(string $streamRemote): void
+    {
+        if (!\in_array($streamRemote, [self::STREAM_REMOTE_ADMIN, self::STREAM_REMOTE_ALL, self::STREAM_REMOTE_NONE], true)) {
+            throw new \InvalidArgumentException(\sprintf('Invalid stream_remote value "%s", expected "admin", "all" or "none".', $streamRemote));
+        }
+
+        $this->streamRemote = $streamRemote;
+    }
+
+    public function setRequestStack(RequestStack $requestStack): void
+    {
+        $this->requestStack = $requestStack;
+    }
+
     protected function getFileResponse(
         FileVersion $fileVersion,
         string $locale,
         string $dispositionType = ResponseHeaderBag::DISPOSITION_ATTACHMENT,
     ): Response {
-        if (StorageInterface::TYPE_REMOTE !== $this->storage->getType($fileVersion->getStorageOptions())) {
+        if (
+            StorageInterface::TYPE_REMOTE !== $this->storage->getType($fileVersion->getStorageOptions())
+            || !$this->shouldStreamRemote()
+        ) {
             return parent::getFileResponse($fileVersion, $locale, $dispositionType);
         }
 
         return $this->createStreamedFileResponse($fileVersion, $dispositionType);
+    }
+
+    private function shouldStreamRemote(): bool
+    {
+        return match ($this->streamRemote) {
+            self::STREAM_REMOTE_ALL => true,
+            self::STREAM_REMOTE_NONE => false,
+            default => self::ADMIN_DOWNLOAD_ROUTE === $this->requestStack?->getCurrentRequest()?->attributes->get('_route'),
+        };
     }
 
     private function createStreamedFileResponse(
