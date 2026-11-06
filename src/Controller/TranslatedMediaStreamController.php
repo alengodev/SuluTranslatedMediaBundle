@@ -39,6 +39,13 @@ class TranslatedMediaStreamController extends MediaStreamController
         'application/xml',
     ];
 
+    /**
+     * Read-chunk size for copying the remote file to the client. The default stream chunk size
+     * is 8 KB, which means a lot of small reads over the storage/HTTP connection for large master
+     * files; 512 KB cuts the number of iterations/syscalls without any meaningful memory cost.
+     */
+    private const STREAM_CHUNK_SIZE = 524288;
+
     protected function getFileResponse(
         FileVersion $fileVersion,
         string $locale,
@@ -76,6 +83,9 @@ class TranslatedMediaStreamController extends MediaStreamController
             }
 
             try {
+                if (\is_resource($stream)) {
+                    \stream_set_chunk_size($stream, self::STREAM_CHUNK_SIZE);
+                }
                 \stream_copy_to_stream($stream, $output);
             } finally {
                 if (\is_resource($stream)) {
