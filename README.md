@@ -14,7 +14,7 @@ Serves media files under locale-specific SEO filenames (e.g. `/uploads/red-shoes
 - **Format cache warming** — pre-generates the format cache (jpg/webp/avif, x1 & x2) for all image media under their translated filenames
 - **Progressive formats** (opt-in) — on-demand requests generate one rendition step at a time (jpg/png → webp → avif) instead of the expensive format right away
 - **Admin tab** — "Additional Data" tab auto-registered in the Sulu Media admin
-- **Collection section** — the media details form shows the media's collection as a folder tile (links to its media overview) with its clickable path, ending in the file's storage path (`segment/fileName` from `storageOptions`), below "License"
+- **Collection & Storage section** — the media details form shows the media's collection as a folder tile (links to its media overview) with its clickable path, and next to it a tile with its storage path (`segment/fileName` from `storageOptions`), file size and mime type, below "License"
 - **Consistent master-file download** — "Download master file" in the admin streams remote (S3/CDN) files through the app as an attachment, so they download instead of opening inline in a new window (matching local storage); website media URLs keep redirecting to the CDN (configurable, see [Master-file download](#master-file-download)); replaces Sulu's `MediaStreamController` via compiler pass
 - **Zero-config** — `sulu_media.objects.media.model` and `sulu_admin` resources are auto-configured
 

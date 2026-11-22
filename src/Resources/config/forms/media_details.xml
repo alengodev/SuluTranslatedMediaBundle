@@ -13,8 +13,8 @@
     <properties>
         <section name="media_collection">
             <meta>
-                <title lang="en">Collection</title>
-                <title lang="de">Ordner</title>
+                <title lang="en">Collection &amp; Storage</title>
+                <title lang="de">Ordner &amp; Speicher</title>
             </meta>
             <properties>
                 <property name="collection" type="media_collection_path" onInvalid="ignore"/>
