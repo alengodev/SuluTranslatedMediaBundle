@@ -22,11 +22,15 @@ type Collection = {
 const breadcrumbStyle = {display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', margin: '20px 0 0', padding: 0};
 const breadcrumbItemStyle = {display: 'flex', alignItems: 'center', gap: '6px', listStyle: 'none'};
 const arrowStyle = {fontSize: '10px', color: '#999'};
+// Parts of the media's storageOptions forming its storage path, in the order of
+// Sulu's FlysystemStorage::getFilePath() (directory is only set for e.g. trashed files)
+const STORAGE_PATH_KEYS = ['directory', 'segment', 'fileName'];
 
 /**
  * Read-only field showing the collection of the current media item as a folder tile
  * (like the media overview) with its clickable path below. Tile and path segments
- * open the media overview of the respective collection.
+ * open the media overview of the respective collection. The path ends with the
+ * media's storage path (e.g. `05/image.jpg`, from its `storageOptions`), as plain text.
  * Value is the media's `collection` id (provided by the media API).
  */
 @observer
@@ -59,6 +63,21 @@ class MediaCollectionPath extends React.Component<FieldTypeProps<?(number | stri
         const {formInspector} = this.props;
 
         return formInspector.locale ? formInspector.locale.get() : undefined;
+    }
+
+    // Observed through the form store: updates when e.g. a new file version is uploaded
+    get storagePath(): ?string {
+        const storageOptions = this.props.formInspector.getValueByPath('/storageOptions');
+        if (!storageOptions || typeof storageOptions !== 'object' || Array.isArray(storageOptions)) {
+            return undefined;
+        }
+
+        const path = STORAGE_PATH_KEYS
+            .map((key) => storageOptions[key])
+            .filter((part) => typeof part === 'string' && part !== '')
+            .join('/');
+
+        return path || undefined;
     }
 
     @action load(collectionId: ?(number | string), locale: ?string) {
@@ -116,7 +135,7 @@ class MediaCollectionPath extends React.Component<FieldTypeProps<?(number | stri
             return <Loader size={20} />;
         }
 
-        const {collection} = this;
+        const {collection, storagePath} = this;
         if (!collection) {
             return null;
         }
@@ -144,6 +163,12 @@ class MediaCollectionPath extends React.Component<FieldTypeProps<?(number | stri
                             </Button>
                         </li>
                     ))}
+                    {storagePath &&
+                        <li style={breadcrumbItemStyle}>
+                            <Icon name="su-angle-right" style={arrowStyle} />
+                            <span>{storagePath}</span>
+                        </li>
+                    }
                 </ul>
             </div>
         );
