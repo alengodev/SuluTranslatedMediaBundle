@@ -57,7 +57,7 @@ final class MediaAdditionalDataControllerSecurityTest extends TestCase
         $entityManager->expects(self::never())->method('flush');
 
         try {
-            new MediaAdditionalDataController($entityManager, ['verify_download'], ['title'], $checker)->putAction($this->putRequest(), 1);
+            (new MediaAdditionalDataController($entityManager, ['verify_download'], ['title'], $checker))->putAction($this->putRequest(), 1);
             self::fail('Access must be denied.');
         } catch (AccessDeniedException) {
         }
@@ -101,10 +101,10 @@ final class MediaAdditionalDataControllerSecurityTest extends TestCase
         $type->setKey($collectionType);
         $collection = new Collection();
         $collection->setType($type);
-        new \ReflectionProperty(Collection::class, 'id')->setValue($collection, self::COLLECTION_ID);
+        (new \ReflectionProperty(Collection::class, 'id'))->setValue($collection, self::COLLECTION_ID);
 
         $media = new Media();
-        new \ReflectionProperty(SuluMedia::class, 'id')->setValue($media, 1);
+        (new \ReflectionProperty(SuluMedia::class, 'id'))->setValue($media, 1);
         $media->setCollection($collection);
 
         return $media;

@@ -79,6 +79,8 @@ final class MediaAdditionalDataControllerRoutingTest extends TestCase
         $type->setKey('collection.default');
         $collection = new Collection();
         $collection->setType($type);
+        // Same for Collection::$id (typed since Sulu 3); the controller reads it for the permission check.
+        (new \ReflectionProperty(Collection::class, 'id'))->setValue($collection, 7);
         $media->setCollection($collection);
 
         return $media;
