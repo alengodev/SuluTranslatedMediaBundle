@@ -9,13 +9,23 @@ use Alengo\SuluTranslatedMediaBundle\Model\MediaTranslationsAwareInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Sulu\Bundle\HttpCacheBundle\Cache\CacheManagerInterface;
 use Sulu\Bundle\MediaBundle\Admin\MediaAdmin;
+use Sulu\Bundle\MediaBundle\Entity\Collection;
 use Sulu\Bundle\MediaBundle\Entity\MediaInterface;
+use Sulu\Component\Media\SystemCollections\SystemCollectionManagerInterface;
+use Sulu\Component\Security\Authorization\PermissionTypes;
+use Sulu\Component\Security\Authorization\SecurityCheckerInterface;
+use Sulu\Component\Security\Authorization\SecurityCondition;
 use Sulu\Component\Security\SecuredControllerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
+/**
+ * Additional data tab of media. Sulu's security listener checks the "sulu.media.collections" context; like Sulu's own
+ * MediaController this controller additionally checks the permissions of the media's collection (object permissions)
+ * and, for system collections, the "sulu.media.system_collections" context.
+ */
 class MediaAdditionalDataController implements SecuredControllerInterface
 {
     /**
@@ -26,21 +36,23 @@ class MediaAdditionalDataController implements SecuredControllerInterface
         private readonly EntityManagerInterface $entityManager,
         private readonly array $unlocalizedKeys,
         private readonly array $localizedKeys,
+        private readonly SecurityCheckerInterface $securityChecker,
         private readonly ?CacheManagerInterface $cacheManager = null,
     ) {
     }
 
     public function getAction(Request $request, int $id): Response
     {
-        $entity = $this->findMediaOrFail($id);
+        $locale = $request->query->get('locale');
+        $entity = $this->findMediaOrFail($id, $locale, PermissionTypes::VIEW);
 
-        return new JsonResponse($this->getDataForEntity($entity, $request->query->get('locale')));
+        return new JsonResponse($this->getDataForEntity($entity, $locale));
     }
 
     public function putAction(Request $request, int $id): Response
     {
-        $entity = $this->findMediaOrFail($id);
         $locale = $request->query->get('locale');
+        $entity = $this->findMediaOrFail($id, $locale, PermissionTypes::EDIT);
 
         $this->mapDataToEntity($request->toArray(), $entity, $locale);
         $this->entityManager->flush();
@@ -107,13 +119,23 @@ class MediaAdditionalDataController implements SecuredControllerInterface
         $entity->setMediaTranslation($seoFilename, $localized, $locale);
     }
 
-    private function findMediaOrFail(int $id): MediaInterface&MediaTranslationsAwareInterface&AdditionalDataAwareInterface
+    private function findMediaOrFail(int $id, ?string $locale, string $permission): MediaInterface&MediaTranslationsAwareInterface&AdditionalDataAwareInterface
     {
         $media = $this->entityManager->getRepository(MediaInterface::class)->find($id);
 
         if (!$media instanceof MediaTranslationsAwareInterface || !$media instanceof AdditionalDataAwareInterface) {
             throw new NotFoundHttpException(\sprintf('Media with id "%d" not found or does not support additional data.', $id));
         }
+
+        $collection = $media->getCollection();
+        if (SystemCollectionManagerInterface::COLLECTION_TYPE === $collection->getType()->getKey()) {
+            $this->securityChecker->checkPermission('sulu.media.system_collections', PermissionTypes::VIEW);
+        }
+
+        $this->securityChecker->checkPermission(
+            new SecurityCondition($this->getSecurityContext(), $locale, Collection::class, $collection->getId()),
+            $permission,
+        );
 
         return $media;
     }

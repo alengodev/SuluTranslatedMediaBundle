@@ -9,7 +9,10 @@ use Alengo\SuluTranslatedMediaBundle\Entity\Media;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\EntityRepository;
 use PHPUnit\Framework\TestCase;
+use Sulu\Bundle\MediaBundle\Entity\Collection;
+use Sulu\Bundle\MediaBundle\Entity\CollectionType;
 use Sulu\Bundle\MediaBundle\Entity\Media as SuluMedia;
+use Sulu\Component\Security\Authorization\SecurityCheckerInterface;
 use Symfony\Component\HttpFoundation\Request;
 
 final class MediaAdditionalDataControllerRoutingTest extends TestCase
@@ -72,6 +75,12 @@ final class MediaAdditionalDataControllerRoutingTest extends TestCase
         $property = new \ReflectionProperty(SuluMedia::class, 'id');
         $property->setValue($media, $id);
 
+        $type = new CollectionType();
+        $type->setKey('collection.default');
+        $collection = new Collection();
+        $collection->setType($type);
+        $media->setCollection($collection);
+
         return $media;
     }
 
@@ -83,6 +92,7 @@ final class MediaAdditionalDataControllerRoutingTest extends TestCase
         $entityManager = $this->createStub(EntityManagerInterface::class);
         $entityManager->method('getRepository')->willReturn($repository);
 
-        return new MediaAdditionalDataController($entityManager, self::UNLOCALIZED, self::LOCALIZED);
+        // permissions are covered by MediaAdditionalDataControllerSecurityTest
+        return new MediaAdditionalDataController($entityManager, self::UNLOCALIZED, self::LOCALIZED, $this->createStub(SecurityCheckerInterface::class));
     }
 }

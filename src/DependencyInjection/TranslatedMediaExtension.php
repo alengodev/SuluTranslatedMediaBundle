@@ -119,6 +119,7 @@ class TranslatedMediaExtension extends Extension implements PrependExtensionInte
         $controllerDef->addArgument(new Reference('doctrine.orm.entity_manager'));
         $controllerDef->addArgument(\array_values($config['unlocalized_keys']));
         $controllerDef->addArgument(\array_values($config['localized_keys']));
+        $controllerDef->addArgument(new Reference('sulu_security.security_checker'));
         $controllerDef->addArgument(new Reference('sulu_http_cache.cache_manager', ContainerBuilder::NULL_ON_INVALID_REFERENCE));
         $controllerDef->setPublic(true);
         $container->setDefinition(MediaAdditionalDataController::class, $controllerDef);
